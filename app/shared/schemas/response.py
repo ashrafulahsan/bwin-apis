@@ -9,6 +9,7 @@ from app.core.constants import (
     DEFAULT_SUCCESS_MESSAGE,
     ErrorCode,
 )
+from app.shared.schemas.pagination import Page, SupportsPagination
 
 T = TypeVar("T")
 
@@ -50,6 +51,34 @@ def success_response(
 ) -> APIResponse[T]:
     """Build a successful `APIResponse` envelope."""
     return APIResponse[T](success=True, message=message, data=data)
+
+
+def created_response(data: T, message: str = "Created successfully") -> APIResponse[T]:
+    """Envelope for a 201. The status code is set on the route decorator."""
+    return APIResponse[T](success=True, message=message, data=data)
+
+
+def deleted_response(message: str = "Deleted successfully") -> APIResponse[None]:
+    """Envelope for a delete, where there is no payload to return."""
+    return APIResponse[None](success=True, message=message, data=None)
+
+
+def paginated_response(
+    items: list[T],
+    total_items: int,
+    pagination: SupportsPagination,
+    message: str = DEFAULT_SUCCESS_MESSAGE,
+) -> APIResponse[Page[T]]:
+    """Envelope wrapping a page of results and its metadata.
+
+    `total_items` is the count of every row matching the query, not the
+    length of `items` - the repository returns both.
+    """
+    return APIResponse[Page[T]](
+        success=True,
+        message=message,
+        data=Page[T].from_params(items, total_items, pagination),
+    )
 
 
 def error_response(

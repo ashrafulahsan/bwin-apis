@@ -204,6 +204,63 @@ validation problems:
 }
 ```
 
+## Shared Utilities
+
+Cross-module helpers live in [app/shared/](app/shared/) and are re-exported from
+`app.shared.utils` and `app.shared.schemas`.
+
+**Response builders** — [app/shared/schemas/response.py](app/shared/schemas/response.py)
+
+```python
+success_response(data, message)                            # 200
+created_response(data)                                     # 201
+deleted_response()                                         # no payload
+paginated_response(items, total_items, pagination)         # page + metadata
+```
+
+**Pagination** — combine `PaginationDep` with `paginated_response`. The
+repository returns the page slice and the total row count; the builder does
+the rest:
+
+```python
+@router.get("")
+async def list_courses(
+    db: DbSession, pagination: PaginationDep
+) -> APIResponse[Page[CourseRead]]:
+    items, total = await service.list_courses(db, pagination)
+    return paginated_response(items, total, pagination, "Courses fetched")
+```
+
+```json
+{ "success": true, "message": "Courses fetched",
+  "data": { "items": [...],
+            "meta": { "page": 2, "page_size": 20, "total_items": 45,
+                      "total_pages": 3, "has_next": true, "has_previous": true } } }
+```
+
+**Dates** — [app/shared/utils/dates.py](app/shared/utils/dates.py). Everything is
+timezone-aware UTC; naive input is assumed UTC, never local time.
+
+```python
+utc_now()                     start_of_day(dt) / end_of_day(dt)
+ensure_utc(dt)                add_days(dt, n) / days_between(a, b)
+to_iso(dt) / parse_iso(s)     is_expired(dt) / is_future(dt)
+time_ago(dt)                  # "3 hours ago", "in 2 days"
+```
+
+**Slugs** — [app/shared/utils/slug.py](app/shared/utils/slug.py)
+
+```python
+slugify("Café & Bar: São Paulo!")     # 'cafe-and-bar-sao-paulo'
+slugify("CEO's Guide")                # 'ceos-guide'
+await generate_unique_slug(title, repository.slug_exists)
+```
+
+`slugify` transliterates accents, spells out `&` and `@`, drops apostrophes,
+and truncates at a word boundary. It returns `""` when nothing survives (a
+title of only emoji, say) — `generate_unique_slug` handles that by falling
+back to a random token, and appends `-2`, `-3`, … until the slug is free.
+
 ## Error Handling
 
 Services raise the exceptions in [app/core/exceptions.py](app/core/exceptions.py)

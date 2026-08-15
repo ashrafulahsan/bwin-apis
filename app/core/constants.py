@@ -14,6 +14,9 @@ DEFAULT_PAGE = 1
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
+# Slugs
+SLUG_MAX_LENGTH = 255
+
 # Uploads
 BYTES_PER_MB = 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"})
