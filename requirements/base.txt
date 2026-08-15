@@ -12,3 +12,7 @@ sqlalchemy[asyncio]>=2.0.36
 alembic>=1.14.0
 asyncpg>=0.30.0          # async driver used by the application
 psycopg[binary]>=3.2     # blocking driver used by Alembic
+
+# Auth
+bcrypt>=4.2.0
+email-validator>=2.2.0

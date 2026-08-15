@@ -258,6 +258,70 @@ a working page into an error.
 suits per-language columns. Which one the content modules use is decided when
 the CMS models land.
 
+## Users
+
+An account is identified by an **email address, a phone number, or both** —
+and either one signs in. Both columns are nullable, with a `CHECK` constraint
+guaranteeing at least one is present, so an account can never exist with no way
+to reach it.
+
+**Phone numbers are stored in E.164** and normalized on the way in, so however
+someone types theirs it matches the same account:
+
+```
+01712345678  →  +8801712345678      01712-345678  →  +8801712345678
+8801712345678 → +8801712345678      017 1234 5678 →  +8801712345678
+```
+
+The default country code is `+880`. A bare number already carrying the country
+code is recognised only when its length works out, so a local number that
+happens to start with those digits is not mangled.
+
+**Look a user up without knowing which credential they used:**
+
+```
+GET /api/v1/users/by-identifier?identifier=ali@example.com
+GET /api/v1/users/by-identifier?identifier=01712345678
+```
+
+**Social login** — Google and Facebook — lives in a separate `user_identities`
+table rather than columns on `users`, so one account can hold a password *and*
+several linked providers, and adding a provider needs no migration.
+
+```python
+user, created = await service.resolve_social_login(payload)
+```
+
+- A returning social login finds the existing account.
+- A social login whose verified email already has an account **links to it**
+  rather than creating a duplicate person.
+- A social sign-up arrives `active` and `email_verified`, because the provider
+  already proved the address.
+- Unlinking is **refused when it is the only way in** — set a password first.
+- Facebook without an email cannot create an account, since there would be no
+  identifier to satisfy the `CHECK` constraint.
+
+The caller must have verified the identity with the provider first; exchanging
+the authorization code belongs to the authentication module.
+
+**Passwords** are bcrypt, work factor 12, in
+[app/core/security.py](app/core/security.py). Over 72 bytes is **refused, not
+truncated** — bcrypt ignores the remainder, which would let two different
+passwords open the same account. Changing an existing password requires the
+current one, so a hijacked session cannot lock the owner out; an account
+created through Google has none and can set its first without it.
+
+**Roles are many-to-many.** An instructor who also manages content needs both,
+and one-role-per-user is just the common case. A user's permissions are the
+union across their roles:
+
+```python
+user.has_permission("course.create")   user.role_slugs
+user.highest_level                     user.linked_providers()
+```
+
+New accounts become **students** unless `role_ids` says otherwise.
+
 ## Roles
 
 Seven roles ship with the platform, seeded by migration so every environment
