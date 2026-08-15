@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.database import check_database_connection
+from app.core.dependencies import LanguageDep
 from app.core.exceptions import ServiceUnavailableException
 from app.shared.schemas.response import APIResponse, success_response
 
@@ -17,6 +18,7 @@ class HealthStatus(BaseModel):
     status: str
     environment: str
     version: str
+    language: str
 
 
 class ReadinessStatus(HealthStatus):
@@ -32,12 +34,13 @@ class ReadinessStatus(HealthStatus):
     summary="Liveness check",
     description="Returns the liveness state of the API without touching dependencies.",
 )
-async def health_check() -> APIResponse[HealthStatus]:
+async def health_check(language: LanguageDep) -> APIResponse[HealthStatus]:
     return success_response(
         data=HealthStatus(
             status="ok",
             environment=settings.environment.value,
             version=settings.version,
+            language=language.value,
         ),
         message="Service is healthy",
     )
@@ -50,7 +53,7 @@ async def health_check() -> APIResponse[HealthStatus]:
     summary="Readiness check",
     description="Verifies the API can reach PostgreSQL before accepting traffic.",
 )
-async def readiness_check() -> APIResponse[ReadinessStatus]:
+async def readiness_check(language: LanguageDep) -> APIResponse[ReadinessStatus]:
     if not await check_database_connection():
         raise ServiceUnavailableException("Database is unreachable.")
 
@@ -59,6 +62,7 @@ async def readiness_check() -> APIResponse[ReadinessStatus]:
             status="ok",
             environment=settings.environment.value,
             version=settings.version,
+            language=language.value,
             database="connected",
         ),
         message="Service is ready",

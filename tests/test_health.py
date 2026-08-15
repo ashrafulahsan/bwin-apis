@@ -14,6 +14,7 @@ def test_health_check_returns_standard_envelope(client: TestClient) -> None:
     assert body["message"] == "Service is healthy"
     assert body["data"]["status"] == "ok"
     assert body["data"]["version"] == settings.version
+    assert body["data"]["language"] == "en"
 
 
 def test_openapi_schema_is_available(client: TestClient) -> None:

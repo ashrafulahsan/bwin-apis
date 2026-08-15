@@ -10,6 +10,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import dispose_engine
 from app.core.exceptions import register_exception_handlers
+from app.core.i18n import LanguageMiddleware
 from app.shared.schemas.response import APIResponse, success_response
 
 
@@ -37,12 +38,16 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Middleware added last sits outermost, so CORS goes after the language
+    # middleware and gets to answer preflight requests first.
+    application.add_middleware(LanguageMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Language"],
     )
 
     register_exception_handlers(application)

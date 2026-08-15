@@ -204,6 +204,60 @@ validation problems:
 }
 ```
 
+## Languages (i18n)
+
+The platform serves **English (`en`, default)** and **Bengali (`bn`)**.
+
+Language is resolved per request, with `?lang=` taking precedence over the
+header — a reader clicking "বাংলা" should get Bengali even though their browser
+still sends `Accept-Language: en`:
+
+```bash
+curl /api/v1/health                                   # -> en
+curl /api/v1/health?lang=bn                           # -> bn
+curl -H "Accept-Language: bn-BD,bn;q=0.9" /api/v1/health   # -> bn
+curl /api/v1/health?lang=fr                           # -> en (falls back)
+```
+
+Every response carries `Content-Language`, plus `Vary: Accept-Language` so
+shared caches key on the header rather than the URL alone.
+
+**Reading the language.** In a router, take the dependency — this is also what
+puts `?lang=` in the OpenAPI schema:
+
+```python
+@router.get("/{course_id}")
+async def get_course(course_id: UUID, language: LanguageDep) -> ...:
+```
+
+Anywhere without a request — services, repositories, jobs — read the context
+variable the middleware established:
+
+```python
+from app.core.i18n import get_current_language
+
+language = get_current_language()
+```
+
+**Helpers** live in [app/shared/utils/language.py](app/shared/utils/language.py):
+
+```python
+normalize_language("bn-BD")            # Language.BN  (region subtags dropped)
+parse_accept_language(header)          # [('bn', 0.9), ('en', 0.8)] by quality
+negotiate_language(header)             # best supported match
+language_display_name(Language.BN)     # 'বাংলা'
+pick_translation({"en": ..., "bn": ...}, language)
+localized_field_name("title", Language.BN)   # 'title_bn'
+```
+
+Nothing here raises on bad input. An unrecognised tag or a malformed header
+from a proxy falls back to the default — a language preference must never turn
+a working page into an error.
+
+`pick_translation` suits translations stored as JSONB; `localized_field_name`
+suits per-language columns. Which one the content modules use is decided when
+the CMS models land.
+
 ## Repository Layer
 
 Every module's repository subclasses `BaseRepository`, so routine CRUD is

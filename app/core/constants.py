@@ -17,6 +17,11 @@ MAX_PAGE_SIZE = 100
 # Slugs
 SLUG_MAX_LENGTH = 255
 
+# Internationalization
+LANGUAGE_QUERY_PARAM = "lang"
+ACCEPT_LANGUAGE_HEADER = "accept-language"
+CONTENT_LANGUAGE_HEADER = "content-language"
+
 # Uploads
 BYTES_PER_MB = 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"})
@@ -24,6 +29,23 @@ ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
     {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"}
 )
 ALLOWED_VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov"})
+
+
+class Language(StrEnum):
+    """Languages the platform serves content in."""
+
+    EN = "en"
+    BN = "bn"
+
+
+DEFAULT_LANGUAGE = Language.EN
+SUPPORTED_LANGUAGES: frozenset[Language] = frozenset(Language)
+
+#: Endonyms - each language named in itself, for language switchers.
+LANGUAGE_NAMES: dict[Language, str] = {
+    Language.EN: "English",
+    Language.BN: "বাংলা",
+}
 
 
 class Environment(StrEnum):
