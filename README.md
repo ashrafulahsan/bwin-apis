@@ -204,6 +204,53 @@ validation problems:
 }
 ```
 
+## Repository Layer
+
+Every module's repository subclasses `BaseRepository`, so routine CRUD is
+written once:
+
+```python
+class CourseRepository(BaseRepository[Course]):
+    model = Course
+```
+
+That yields `get`, `get_or_raise`, `get_by`, `get_by_field`, `list`, `count`,
+`paginate`, `exists`, `create`, `create_many`, `update`, `delete`,
+`soft_delete` and `restore`.
+
+**Filtering** is declarative, so services build criteria without importing the
+ORM. Conditions are combined with `AND`:
+
+```python
+courses, total = await repository.paginate(
+    pagination,
+    filters=[Filter.eq("status", "published"), Filter.gte("price", 100)],
+    search=search.search,
+    search_fields=["title", "summary"],
+    sort_by=sort.sort_by,
+    sort_order=sort.sort_order,
+)
+return paginated_response(courses, total, pagination)
+```
+
+Operators: `eq` `ne` `gt` `gte` `lt` `lte` `in_` `not_in` `contains`
+`starts_with` `ends_with` `is_null` `between`, plus raw `like` / `ilike`.
+
+Notes that matter in practice:
+
+- **Field names are validated against the model.** A name that is not a mapped
+  column raises `UnknownFieldError`, which renders as a 400 — these names
+  usually arrive from query parameters, so a typo must not become a 500.
+- **Search input is escaped.** A term containing `%` or `_` matches literally
+  instead of behaving as a wildcard.
+- **Ordering always ends with a primary key tiebreaker.** Without a total
+  order, rows sharing a `created_at` can swap between queries, so a paginating
+  client sees one row twice and never sees another.
+- **Soft-deleted rows are excluded by default** on models carrying
+  `deleted_at`. Pass `include_deleted=True` to see them.
+- **Repositories never commit.** They `flush()` so the database assigns
+  defaults; the service owns the transaction.
+
 ## Shared Utilities
 
 Cross-module helpers live in [app/shared/](app/shared/) and are re-exported from

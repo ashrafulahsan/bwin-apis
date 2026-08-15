@@ -98,7 +98,13 @@ class UUIDPrimaryKeyMixin:
 
 
 class TimestampMixin:
-    """`created_at` / `updated_at`, both maintained by the database."""
+    """`created_at` / `updated_at`, both maintained by the database.
+
+    `now()` is PostgreSQL's transaction timestamp, so every row touched by one
+    transaction shares a value and `updated_at` advances between transactions
+    rather than between statements. That consistency is the point: rows
+    written together are timestamped together.
+    """
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
