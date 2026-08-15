@@ -1,15 +1,15 @@
-"""Permissions for the roles module.
+"""Permission codes governing the roles module.
 
-Declared now so routers can reference stable names; enforcement arrives with
-the authentication and permissions work.
+Codes follow the platform format `resource.action`, matching the seeded
+permissions in `app.modules.permissions.constants`.
 """
 
 from enum import StrEnum
 
 
 class RolePermission(StrEnum):
-    READ = "role:read"
-    CREATE = "role:create"
-    UPDATE = "role:update"
-    DELETE = "role:delete"
-    ASSIGN = "role:assign"
+    VIEW = "role.view"
+    CREATE = "role.create"
+    UPDATE = "role.update"
+    DELETE = "role.delete"
+    ASSIGN = "role.assign"

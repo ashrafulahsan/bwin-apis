@@ -1,15 +1,15 @@
-"""Permissions for the translations module.
+"""Permission codes governing the translations module.
 
-Declared now so routers can reference stable names; enforcement arrives with
-the roles and permissions module.
+Codes follow the platform format `resource.action`, matching the seeded
+permissions in `app.modules.permissions.constants`.
 """
 
 from enum import StrEnum
 
 
 class TranslationPermission(StrEnum):
-    READ = "translation:read"
-    CREATE = "translation:create"
-    UPDATE = "translation:update"
-    DELETE = "translation:delete"
-    IMPORT = "translation:import"
+    VIEW = "translation.view"
+    CREATE = "translation.create"
+    UPDATE = "translation.update"
+    DELETE = "translation.delete"
+    IMPORT = "translation.import"

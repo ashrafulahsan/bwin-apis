@@ -298,6 +298,66 @@ API says so explicitly and points you at restore.
 Permission enforcement arrives with authentication; `permissions.py` already
 reserves the names.
 
+## Permissions
+
+Permissions are `resource.action` codes — `user.view`, `course.create`. The
+resource and action are also stored as separate columns, so an admin screen can
+render the familiar grid of resources down the side and actions across the top.
+
+50 permissions across 13 resources are seeded by migration, along with a
+starting grant matrix:
+
+| Role            | Grants | Shape                                             |
+| --------------- | ------ | ------------------------------------------------- |
+| Super Admin     | 50     | everything                                        |
+| Admin           | 47     | everything except defining new permissions        |
+| Content Manager | 16     | pages, media, categories — including publish      |
+| Editor          | 8      | writes pages, **cannot publish or delete**        |
+| Instructor      | 12     | courses, lessons, grading                         |
+| Support         | 7      | read access plus sending notifications            |
+| Student         | 4      | read-only                                         |
+
+This is a starting point, not a constraint — administrators can change any of
+it, and re-running the seed will not undo their changes.
+
+**Endpoints**
+
+| Endpoint                                          | Purpose                          |
+| ------------------------------------------------- | -------------------------------- |
+| `GET|POST /api/v1/permissions`                     | List and define permissions      |
+| `GET|PATCH|DELETE /api/v1/permissions/{id}`        | Single permission                |
+| `GET /api/v1/permissions/grouped`                  | Shaped for a permission grid     |
+| `GET /api/v1/permissions/resources`                | Distinct resources               |
+| `GET /api/v1/roles/{id}/permissions`               | A role's grants                  |
+| `PUT /api/v1/roles/{id}/permissions`               | Replace — what a grid submits    |
+| `POST /api/v1/roles/{id}/permissions`              | Grant, additive                  |
+| `POST /api/v1/roles/{id}/permissions/revoke`       | Revoke                           |
+| `GET /api/v1/roles/{id}/permissions/{code}`        | Check one code                   |
+
+Revoke is a POST because the codes travel in the body and some proxies strip
+bodies from DELETE requests.
+
+**In code**, a loaded role carries its permissions eagerly:
+
+```python
+role.has_permission("page.publish")   # False for Editor
+role.permission_codes                 # {"page.view", "page.create", ...}
+```
+
+The relationship is `lazy="selectin"` by design — under asyncio a lazy load
+outside the original await raises `MissingGreenlet`, and a role's permission
+set is small.
+
+Four rules keep grants honest:
+
+- **Unknown codes are rejected, never skipped.** Granting `["course.view",
+  "typo.action"]` fails the whole request rather than silently granting one
+  and leaving an administrator believing both went through.
+- **System permissions cannot be deleted.**
+- **A permission still granted to any role cannot be deleted** — that would
+  strip access silently instead of making someone revoke it deliberately.
+- **Re-granting is a no-op**, not a primary key violation.
+
 ## Translations
 
 UI strings live in the `translations` table, one row per key per language.
