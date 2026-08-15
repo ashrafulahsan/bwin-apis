@@ -258,6 +258,61 @@ a working page into an error.
 suits per-language columns. Which one the content modules use is decided when
 the CMS models land.
 
+## Translations
+
+UI strings live in the `translations` table, one row per key per language.
+Keys are dot-namespaced (`dashboard.title`, `login.button`, `course.enroll`),
+and the first segment is stored as `namespace` so a screen can fetch only the
+group it needs.
+
+**Seed files** live in
+[app/modules/translations/locales/](app/modules/translations/locales/) as
+`en.json` and `bn.json`, reviewable in a pull request. They may be nested or
+flat; both produce the same keys:
+
+```json
+{ "dashboard": { "title": "Dashboard" } }   →  dashboard.title
+{ "dashboard.title": "Dashboard" }          →  dashboard.title
+```
+
+Import them with `TranslationService.sync_all_locales()`. It upserts via
+`ON CONFLICT (key, language)`, so re-importing updates changed strings rather
+than failing.
+
+**Endpoints**
+
+| Endpoint                                   | Purpose                              |
+| ------------------------------------------ | ------------------------------------ |
+| `GET /api/v1/translations`                  | Flat bundle for the negotiated language |
+| `GET /api/v1/translations?namespace=login`  | Just one key group                   |
+| `GET /api/v1/translations/namespaces`       | Available groups                     |
+| `GET /api/v1/translations/missing?language=bn` | Untranslated keys — the translator's to-do list |
+| `GET /api/v1/translations/entries`          | Paginated rows for an admin screen   |
+
+The bundle honours the language rules from the i18n section, so `?lang=bn` and
+`Accept-Language: bn` both work.
+
+**Fallback is layered**, so an interface never shows a blank:
+
+1. The requested language.
+2. English, for keys not yet translated.
+3. The key itself (`course.enroll`), which is obvious in review — unlike an
+   empty string, which nobody notices.
+
+**Interpolation** uses `{placeholders}`:
+
+```python
+await service.translate("dashboard.welcome", Language.BN, name="আশরাফুল")
+# "স্বাগতম, আশরাফুল"
+```
+
+A translator who drops a placeholder gets the raw template back and a logged
+warning, rather than a `KeyError` in production.
+
+Write endpoints (create, update, delete, import) are deliberately not exposed
+yet — they land with the roles module, since an unauthenticated write endpoint
+would let anyone rewrite the interface. The service methods already exist.
+
 ## Repository Layer
 
 Every module's repository subclasses `BaseRepository`, so routine CRUD is

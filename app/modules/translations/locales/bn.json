@@ -1,0 +1,36 @@
+{
+  "common": {
+    "save": "সংরক্ষণ করুন",
+    "cancel": "বাতিল",
+    "delete": "মুছে ফেলুন",
+    "edit": "সম্পাদনা",
+    "search": "অনুসন্ধান",
+    "loading": "লোড হচ্ছে...",
+    "no_results": "কোনো ফলাফল পাওয়া যায়নি"
+  },
+  "dashboard": {
+    "title": "ড্যাশবোর্ড",
+    "welcome": "স্বাগতম, {name}",
+    "overview": "সংক্ষিপ্ত বিবরণ"
+  },
+  "login": {
+    "title": "সাইন ইন",
+    "button": "লগ ইন",
+    "email": "ইমেইল ঠিকানা",
+    "password": "পাসওয়ার্ড",
+    "forgot_password": "পাসওয়ার্ড ভুলে গেছেন?",
+    "invalid_credentials": "ইমেইল বা পাসওয়ার্ড ভুল"
+  },
+  "course": {
+    "enroll": "ভর্তি হন",
+    "enrolled": "ভর্তি হয়েছেন",
+    "title": "কোর্সসমূহ",
+    "lessons": "পাঠসমূহ",
+    "progress": "অগ্রগতি"
+  },
+  "validation": {
+    "required": "এই ঘরটি আবশ্যক",
+    "email": "একটি বৈধ ইমেইল ঠিকানা দিন",
+    "min_length": "কমপক্ষে {min} অক্ষর হতে হবে"
+  }
+}
