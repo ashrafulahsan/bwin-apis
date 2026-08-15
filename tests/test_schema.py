@@ -15,6 +15,7 @@ from app.modules.users.models.user_role import user_roles
 JUNCTIONS = {
     "role_permissions": ("role_id", "permission_id"),
     "user_roles": ("user_id", "role_id"),
+    "blog_tags": ("blog_id", "tag_id"),
 }
 
 APPLICATION_TABLES = [
@@ -25,6 +26,10 @@ APPLICATION_TABLES = [
     "user_identities",
     "user_roles",
     "role_permissions",
+    "category_types",
+    "categories",
+    "blogs",
+    "blog_tags",
 ]
 
 

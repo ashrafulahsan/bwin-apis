@@ -586,18 +586,18 @@ Permissions are `resource.action` codes — `user.view`, `course.create`. The
 resource and action are also stored as separate columns, so an admin screen can
 render the familiar grid of resources down the side and actions across the top.
 
-50 permissions across 13 resources are seeded by migration, along with a
+55 permissions across 14 resources are seeded by migration, along with a
 starting grant matrix:
 
 | Role            | Grants | Shape                                             |
 | --------------- | ------ | ------------------------------------------------- |
-| Super Admin     | 50     | everything                                        |
-| Admin           | 47     | everything except defining new permissions        |
-| Content Manager | 16     | pages, media, categories — including publish      |
-| Editor          | 8      | writes pages, **cannot publish or delete**        |
+| Super Admin     | 55     | everything                                        |
+| Admin           | 52     | everything except defining new permissions        |
+| Content Manager | 21     | pages, blogs, media, categories — incl. publish   |
+| Editor          | 11     | writes pages and blogs, **cannot publish**        |
 | Instructor      | 12     | courses, lessons, grading                         |
-| Support         | 7      | read access plus sending notifications            |
-| Student         | 4      | read-only                                         |
+| Support         | 8      | read access plus sending notifications            |
+| Student         | 5      | read-only                                         |
 
 This is a starting point, not a constraint — administrators can change any of
 it, and re-running the seed will not undo their changes.
@@ -701,6 +701,96 @@ menu without being deleted.
 delete the category. Both tables also carry `deleted_at`: `status` answers
 "should this be offered for new content?", which is a different question from
 "does this still exist?".
+
+## Blogs
+
+A blog post files itself under the shared category tree rather than under
+tables of its own. Its **category** comes from the `blog_category` taxonomy and
+its **tags** from `blog_tag` — one vocabulary, managed in one place, in a tree
+the categories module already knows how to nest, rename and retire. Both
+taxonomies are seeded by migration, so a fresh database comes up working.
+
+A foreign key can only name a table, never a subset of one, so keeping those
+two vocabularies apart is the service's job and is checked on every write:
+
+```
+POST /blogs  { "blog_category_id": <a blog_tag row> }
+  → 400  A blog's category must come from the 'Blog Category' category type,
+         and 'postgres' does not.
+```
+
+**Endpoints**
+
+```
+GET    /api/v1/blogs                     POST   /api/v1/blogs
+GET    /api/v1/blogs/{id}                PATCH  /api/v1/blogs/{id}
+GET    /api/v1/blogs/by-slug/{slug}      DELETE /api/v1/blogs/{id}
+GET    /api/v1/blogs/categories          POST   /api/v1/blogs/{id}/restore
+GET    /api/v1/blogs/tags                POST   /api/v1/blogs/{id}/publish
+                                         POST   /api/v1/blogs/{id}/unpublish
+                                         POST   /api/v1/blogs/{id}/archive
+```
+
+`GET /blogs` filters on `status`, `category_id`, `tag_id`, `author_id`,
+`featured_only` and `live_only`, and searches the title, slug, excerpt and
+body. `/blogs/categories` and `/blogs/tags` expose the vocabulary an author may
+choose from, because writing a post needs that list while the category
+management endpoints are restricted to administrators.
+
+### Publishing is a transition, not a field
+
+`status` cannot be set through create or update. It moves through its own
+endpoints so it can require its own permission — `blog.publish`, which Editors
+deliberately do not hold. That separation is the reason the role exists, and it
+only means anything if going live is guarded separately from editing.
+
+- **A post is always created as a draft**, so creating one cannot bypass the
+  publish check.
+- **`published_at` is set by the transition.** A future date schedules the
+  post: `is_live` compares the date against the clock on every read, so nothing
+  has to run to flip it over, and `live_only` leaves it out until then.
+- **Re-publishing keeps the original date.** Bringing a post back out of the
+  archive should not present it as new.
+- **A published post's slug is fixed.** It is already in links, feeds and
+  search results, and changing it breaks all of them silently. Drafts may be
+  re-slugged freely.
+- **Deleting is soft**, so an archived or deleted post still resolves for
+  anyone holding a link.
+
+A requested slug that is taken is refused rather than suffixed — an editor who
+asked for a particular URL needs to be told, not handed `-2` and left to find
+out from the address bar. A slug *derived* from the title is suffixed quietly,
+since nobody chose it.
+
+### SEO metadata
+
+Every post carries the full set, and every response serves a complete one.
+`SEOFieldsMixin` ([app/shared/models/seo.py](app/shared/models/seo.py)) holds
+the columns — shared with the CMS pages and course pages still to come, so the
+three cannot drift apart — and the read schema fills the gaps:
+
+| Served field       | Falls back to        |
+| ------------------ | -------------------- |
+| `meta_title`       | the post title       |
+| `meta_description` | the excerpt, shortened to what search engines display |
+| `og_title`         | `meta_title`         |
+| `og_description`   | `meta_description`   |
+| `og_image_url`     | the featured image   |
+| `meta_robots`      | `index, follow`      |
+
+The cascade lives on the server so a client rendering `<head>` never has to
+implement it, and two clients cannot implement it differently. Authors write
+only what they want to override.
+
+Two values are validated rather than stored as typed: `meta_robots` is checked
+against a directive allowlist, because a misspelled `noindex` fails open and
+publishes a page that was meant to stay hidden; and `canonical_url` /
+`og_image_url` must be `http(s)` or site-relative, since a `javascript:` URL
+ends up rendered straight into an attribute.
+
+`reading_minutes` is estimated from the word count whenever the body changes,
+with markup stripped first so a paragraph wrapped in a dozen `<span>`s does not
+read as a dozen extra words.
 
 ## Translations
 

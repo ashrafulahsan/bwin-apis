@@ -43,6 +43,7 @@ class PermissionResource(StrEnum):
     LESSON = "lesson"
     ENROLLMENT = "enrollment"
     PAGE = "page"
+    BLOG = "blog"
     MEDIA = "media"
     CATEGORY = "category"
     TRANSLATION = "translation"
@@ -73,6 +74,7 @@ RESOURCE_LABELS: dict[str, str] = {
     PermissionResource.LESSON: "lessons",
     PermissionResource.ENROLLMENT: "enrolments",
     PermissionResource.PAGE: "pages",
+    PermissionResource.BLOG: "blog posts",
     PermissionResource.MEDIA: "media",
     PermissionResource.CATEGORY: "categories",
     PermissionResource.TRANSLATION: "translations",
@@ -90,6 +92,7 @@ SYSTEM_PERMISSIONS: dict[str, list[str]] = {
     PermissionResource.LESSON: ["view", "create", "update", "delete"],
     PermissionResource.ENROLLMENT: ["view", "create", "delete", "grade"],
     PermissionResource.PAGE: ["view", "create", "update", "delete", "publish"],
+    PermissionResource.BLOG: ["view", "create", "update", "delete", "publish"],
     PermissionResource.MEDIA: ["view", "upload", "delete"],
     PermissionResource.CATEGORY: ["view", "create", "update", "delete"],
     PermissionResource.TRANSLATION: ["view", "create", "update", "delete", "import"],
@@ -145,6 +148,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("lesson", "view", "create", "update", "delete"),
         *_codes_for("enrollment", "view", "create", "delete", "grade"),
         *_codes_for("page", "view", "create", "update", "delete", "publish"),
+        *_codes_for("blog", "view", "create", "update", "delete", "publish"),
         *_codes_for("media", "view", "upload", "delete"),
         *_codes_for("category", "view", "create", "update", "delete"),
         *_codes_for("translation", "view", "create", "update", "delete", "import"),
@@ -154,6 +158,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
     ],
     "content-manager": [
         *_codes_for("page", "view", "create", "update", "delete", "publish"),
+        *_codes_for("blog", "view", "create", "update", "delete", "publish"),
         *_codes_for("media", "view", "upload", "delete"),
         *_codes_for("category", "view", "create", "update", "delete"),
         *_codes_for("translation", "view", "update"),
@@ -163,6 +168,10 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
     # Editors write but never publish - that is the point of the role.
     "editor": [
         *_codes_for("page", "view", "create", "update"),
+        # Writes and revises posts but does not decide what goes live: that
+        # separation is the whole point of the role, so `blog.publish` is
+        # withheld exactly as `page` publishing is.
+        *_codes_for("blog", "view", "create", "update"),
         *_codes_for("media", "view", "upload"),
         *_codes_for("category", "view"),
         *_codes_for("translation", "view"),
@@ -180,6 +189,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("course", "view"),
         *_codes_for("enrollment", "view"),
         *_codes_for("page", "view"),
+        *_codes_for("blog", "view"),
         *_codes_for("notification", "view", "send"),
         *_codes_for("report", "view"),
     ],
@@ -188,5 +198,6 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("lesson", "view"),
         *_codes_for("enrollment", "view"),
         *_codes_for("page", "view"),
+        *_codes_for("blog", "view"),
     ],
 }

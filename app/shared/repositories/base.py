@@ -293,19 +293,27 @@ class BaseRepository(Generic[ModelT]):
         await self.session.flush()
 
     async def soft_delete(self, instance: ModelT) -> ModelT:
-        """Mark the row deleted, keeping it for audit and restore."""
+        """Mark the row deleted, keeping it for audit and restore.
+
+        Refreshed for the same reason `update()` is: this writes an UPDATE,
+        which expires `updated_at` and anything else with a server-side
+        `onupdate`, and reading an expired attribute afterwards triggers lazy
+        IO - `MissingGreenlet` under asyncio, at response-rendering time.
+        """
         if not self.supports_soft_delete:
             raise TypeError(f"{self.model.__name__} has no `deleted_at` column.")
 
         instance.deleted_at = utc_now()
         await self.session.flush()
+        await self.session.refresh(instance)
         return instance
 
     async def restore(self, instance: ModelT) -> ModelT:
-        """Undo a soft delete."""
+        """Undo a soft delete, refreshing as `soft_delete()` does."""
         if not self.supports_soft_delete:
             raise TypeError(f"{self.model.__name__} has no `deleted_at` column.")
 
         instance.deleted_at = None
         await self.session.flush()
+        await self.session.refresh(instance)
         return instance

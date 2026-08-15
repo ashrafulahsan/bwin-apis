@@ -116,7 +116,7 @@ async def test_seeding_creates_every_permission(
 ) -> None:
     created = await permissions.seed_system_permissions()
 
-    assert created == len(all_permission_codes()) == 50
+    assert created == len(all_permission_codes()) == 55
 
 
 async def test_seeding_is_idempotent(seeded: PermissionService) -> None:
@@ -375,7 +375,8 @@ async def test_list_filters_by_resource(seeded: PermissionService) -> None:
 async def test_list_filters_by_action(seeded: PermissionService) -> None:
     _, total = await seeded.list_permissions(PaginationParams(), action="publish")
 
-    assert total == 2
+    # Courses, pages and blogs are the three things that get published.
+    assert total == 3
 
 
 async def test_grouped_by_resource(seeded: PermissionService) -> None:
@@ -389,6 +390,7 @@ async def test_grouped_by_resource(seeded: PermissionService) -> None:
         "lesson",
         "enrollment",
         "page",
+        "blog",
         "media",
         "category",
         "translation",

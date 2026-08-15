@@ -733,3 +733,29 @@ def test_the_audit_columns_come_back(
     assert created["created_by"] == me["id"]
     assert created["updated_by"] == me["id"]
     assert created["created_at"] is not None
+
+
+def test_deleting_and_restoring_render_through_the_api(
+    client: TestClient, signed_in: dict[str, dict[str, str]]
+) -> None:
+    """Regression: both used to fail rendering the row they had just written.
+
+    A soft delete is an UPDATE, which expires `updated_at` - it carries a
+    server-side `onupdate` - and reading it back to build the response
+    triggered lazy IO. Only the service layer was covered, and it never looks
+    at that column, so the endpoints returned 422 while the tests passed.
+    """
+    admin = signed_in["admin"]
+
+    taxonomy = client.post(
+        "/api/v1/category-types", headers=admin, json={"name": "Restorable"}
+    ).json()["data"]
+
+    deleted = client.delete(f"/api/v1/category-types/{taxonomy['id']}", headers=admin)
+    restored = client.post(
+        f"/api/v1/category-types/{taxonomy['id']}/restore", headers=admin
+    )
+
+    assert deleted.status_code == 200, deleted.text
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["data"]["id"] == taxonomy["id"]
