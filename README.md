@@ -615,6 +615,43 @@ ruff check .        # lint
 pre-commit install  # enable git hooks
 ```
 
+### Seeding
+
+```bash
+python -m scripts.seed
+```
+
+Fills in roles, permissions, their default grants, translations, and a set of
+demo accounts — one per role, so every role has someone to test with. Safe to
+re-run: anything already present is left alone.
+
+| Account                            | Role(s)                      | Notes                    |
+| ---------------------------------- | ---------------------------- | ------------------------ |
+| `superadmin@bwin.example.com`      | Super Admin                  | all 50 permissions       |
+| `admin@bwin.example.com`           | Admin                        | 47 permissions           |
+| `content@bwin.example.com`         | Content Manager              | Bengali interface        |
+| `editor@bwin.example.com`          | Editor                       | cannot publish           |
+| `instructor@bwin.example.com`      | Instructor                   |                          |
+| `support@bwin.example.com`         | Support                      | Bengali interface        |
+| `student@bwin.example.com`         | Student                      |                          |
+| `lead.instructor@bwin.example.com` | Instructor + Content Manager | two roles at once        |
+| `google.user@bwin.example.com`     | Student                      | Google only, no password |
+| `pending@bwin.example.com`         | Student                      | unverified               |
+| `suspended@bwin.example.com`       | Student                      | blocked                  |
+
+Password: `BwinDemo#2026` (override with `--password`). Phone numbers run
+`+8801700000001` upward, and either identifier signs in.
+
+**Seeding is a script, not a migration, on purpose.** These accounts share one
+known password, so a migration would plant well-known credentials on every
+deployment including production. The script refuses to run when
+`ENVIRONMENT=production` unless given `--force`. Addresses use
+`bwin.example.com` — `example.com` is reserved by RFC 2606 and can never
+receive mail.
+
+`--skip-users` seeds only the reference data, which is what a real environment
+wants.
+
 ### Testing
 
 The suite runs against a **separate `bwindb_test` database**, created and
