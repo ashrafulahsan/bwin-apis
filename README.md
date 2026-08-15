@@ -640,6 +640,68 @@ Four rules keep grants honest:
   strip access silently instead of making someone revoke it deliberately.
 - **Re-granting is a no-op**, not a primary key violation.
 
+## Categories
+
+Two levels of structure. A **category type** names a taxonomy — "Blog Topics",
+"Course Subjects" — and the **categories** inside it form a tree. Keeping the
+taxonomy in its own table means a new one is a row rather than a migration,
+and stops unrelated vocabularies sharing a namespace.
+
+```
+GET    /api/v1/category-types            POST   /api/v1/category-types
+GET    /api/v1/category-types/{id}       PATCH  /api/v1/category-types/{id}
+DELETE /api/v1/category-types/{id}       POST   /api/v1/category-types/{id}/restore
+
+GET    /api/v1/categories                POST   /api/v1/categories
+GET    /api/v1/categories/tree           PATCH  /api/v1/categories/{id}
+GET    /api/v1/categories/{id}           PUT    /api/v1/categories/{id}/parent
+DELETE /api/v1/categories/{id}           POST   /api/v1/categories/{id}/restore
+GET    /api/v1/categories/{id}/children  GET    /api/v1/categories/{id}/ancestors
+```
+
+**Every route requires Super Admin or Admin.** The guard names roles rather
+than permission codes, which is the exception `require_role` exists for: a
+taxonomy is structural rather than editorial, and reshaping one moves every
+piece of content filed under it. Content managers hold `category.create` as a
+permission and are still refused here — deliberately. When the CMS and LMS
+modules need editors to *read* categories to tag their work, the read routes
+can move to `require_permission(CategoryPermission.VIEW)`, which those roles
+already have.
+
+### What the tree guarantees
+
+A parent pointer is easy to store and easy to corrupt, so the service enforces
+what the column cannot:
+
+- **A category is never its own ancestor.** Moving one under its own
+  descendant is refused — it would cut that branch out of the tree and leave
+  it pointing round in a ring, reachable from nothing.
+- **A parent must belong to the same category type**, or a tree read returns
+  categories that do not belong to it.
+- **Nesting stops at 5 levels.** Deeper reads badly in a menu and costs a
+  query per level.
+- **Deleting is refused while children exist**, and deleting a taxonomy is
+  refused while it holds categories. Cascading would remove a whole branch on
+  one click; the refusal says exactly what is in the way.
+- **Changing a category's taxonomy is refused when it has a parent or
+  children**, which would otherwise leave half a branch behind.
+
+Names are unique *within* a taxonomy, so "Design" can be both a blog topic and
+a course subject. Slugs are unique platform-wide, so a URL resolves without
+knowing the type, and a slug never changes when its name does — it is already
+in links.
+
+`GET /categories/tree` returns a whole taxonomy nested, in one flat query
+linked up in memory. With `active_only`, a category whose parent was filtered
+out is promoted to the top rather than dropped, so nothing vanishes from a
+menu without being deleted.
+
+`created_by` and `updated_by` are filled from the access token and are
+`ON DELETE SET NULL` — deleting the administrator who made a category must not
+delete the category. Both tables also carry `deleted_at`: `status` answers
+"should this be offered for new content?", which is a different question from
+"does this still exist?".
+
 ## Translations
 
 UI strings live in the `translations` table, one row per key per language.
