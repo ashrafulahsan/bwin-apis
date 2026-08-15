@@ -15,4 +15,5 @@ psycopg[binary]>=3.2     # blocking driver used by Alembic
 
 # Auth
 bcrypt>=4.2.0
+pyjwt>=2.10.0
 email-validator>=2.2.0

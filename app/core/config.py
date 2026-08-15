@@ -17,7 +17,13 @@ from app.core.constants import (
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 # Placeholder used for local development only; refused in production.
-DEV_SECRET_KEY = "change-me-in-production"
+DEV_SECRET_KEY = "change-me-in-production-with-a-generated-secret"
+
+#: RFC 7518 requires an HMAC key at least as long as the hash it feeds, so
+#: HS256 wants 32 bytes. A shorter key weakens every token the platform
+#: issues, and PyJWT warns about it rather than refusing - so this is checked
+#: here instead, where it can be caught before a deployment goes out.
+MIN_SECRET_KEY_BYTES = 32
 
 
 class Settings(BaseSettings):
@@ -153,8 +159,16 @@ class Settings(BaseSettings):
         if not self.is_production:
             return self
 
-        if self.secret_key.get_secret_value() == DEV_SECRET_KEY:
+        secret = self.secret_key.get_secret_value()
+
+        if secret == DEV_SECRET_KEY:
             raise ValueError("SECRET_KEY must be set to a unique value in production.")
+        if len(secret.encode("utf-8")) < MIN_SECRET_KEY_BYTES:
+            raise ValueError(
+                f"SECRET_KEY must be at least {MIN_SECRET_KEY_BYTES} bytes for "
+                f"{self.jwt_algorithm}. Generate one with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(64))"'
+            )
         if self.debug:
             raise ValueError("DEBUG must be disabled in production.")
 

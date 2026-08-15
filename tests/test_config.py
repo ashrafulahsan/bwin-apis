@@ -3,8 +3,17 @@
 import pytest
 from pydantic import SecretStr
 
-from app.core.config import DEV_SECRET_KEY, Settings, get_settings
+from app.core.config import (
+    DEV_SECRET_KEY,
+    MIN_SECRET_KEY_BYTES,
+    Settings,
+    get_settings,
+)
 from app.core.constants import Environment
+
+#: Long enough to satisfy the HS256 key length rule, so tests about other
+#: production checks are not tripped up by this one.
+PRODUCTION_SECRET = "a-real-production-secret-of-sufficient-length"
 
 
 def _build(**overrides: object) -> Settings:
@@ -52,7 +61,7 @@ def test_docs_are_disabled_in_production() -> None:
     settings = _build(
         environment=Environment.PRODUCTION,
         debug=False,
-        secret_key=SecretStr("a-real-production-secret"),
+        secret_key=SecretStr(PRODUCTION_SECRET),
     )
 
     assert settings.is_production
@@ -69,12 +78,27 @@ def test_production_rejects_the_default_secret_key() -> None:
         )
 
 
+def test_production_rejects_a_short_secret_key() -> None:
+    """A short HMAC key weakens every token, and PyJWT only warns about it."""
+    with pytest.raises(ValueError, match="at least"):
+        _build(
+            environment=Environment.PRODUCTION,
+            debug=False,
+            secret_key=SecretStr("x" * (MIN_SECRET_KEY_BYTES - 1)),
+        )
+
+
+def test_the_development_key_is_long_enough_to_sign_with() -> None:
+    """Short enough to be obviously fake, long enough not to warn on boot."""
+    assert len(DEV_SECRET_KEY.encode("utf-8")) >= MIN_SECRET_KEY_BYTES
+
+
 def test_production_rejects_debug_mode() -> None:
     with pytest.raises(ValueError, match="DEBUG"):
         _build(
             environment=Environment.PRODUCTION,
             debug=True,
-            secret_key=SecretStr("a-real-production-secret"),
+            secret_key=SecretStr(PRODUCTION_SECRET),
         )
 
 

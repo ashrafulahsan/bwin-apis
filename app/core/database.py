@@ -11,7 +11,7 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
 
-from sqlalchemy import DateTime, MetaData, func, text
+from sqlalchemy import DateTime, MetaData, NullPool, func, text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
@@ -130,7 +130,23 @@ class SoftDeleteMixin:
 
 
 def create_engine() -> AsyncEngine:
-    """Build the async engine from centralized settings."""
+    """Build the async engine from centralized settings.
+
+    Under `testing` the pool is switched off. A pooled connection belongs to
+    the event loop that opened it, and the test suite runs more than one - the
+    `TestClient` drives the app in its own loop, while async fixtures run in
+    pytest's. Handing a connection from one to the other raises "attached to a
+    different loop". A fresh connection per checkout costs nothing at test
+    volumes and removes the hazard entirely.
+    """
+    if settings.is_testing:
+        return create_async_engine(
+            settings.database_url,
+            echo=settings.db_echo,
+            poolclass=NullPool,
+            future=True,
+        )
+
     return create_async_engine(
         settings.database_url,
         echo=settings.db_echo,

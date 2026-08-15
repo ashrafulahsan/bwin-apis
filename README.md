@@ -173,11 +173,18 @@ it — see that file for every available key.
 - Connection strings are assembled from parts: `settings.database_url`,
   `settings.sync_database_url` (Alembic), `settings.redis_url`.
 - `ENVIRONMENT=production` disables `/docs`, `/redoc` and `/openapi.json`, and
-  the app refuses to boot if `SECRET_KEY` is still the default or `DEBUG` is on.
+  the app refuses to boot if `SECRET_KEY` is still the default, shorter than
+  32 bytes, or `DEBUG` is on.
+- `ENVIRONMENT=testing` switches the connection pool off. A pooled connection
+  belongs to the event loop that opened it, and the suite runs more than one —
+  the `TestClient` drives the app in its own loop while async fixtures run in
+  pytest's.
 
 Inject settings into a route with `SettingsDep` from
 [app/core/dependencies.py](app/core/dependencies.py), which also provides
-`PaginationDep`, `SortDep` and `SearchDep`.
+`PaginationDep`, `SortDep` and `SearchDep`. Authentication adds `CurrentUser`,
+`OptionalUser` and the `require_permission` / `require_role` guards, in
+[app/modules/auth/dependencies.py](app/modules/auth/dependencies.py).
 
 ## Response Format
 
@@ -258,6 +265,78 @@ a working page into an error.
 suits per-language columns. Which one the content modules use is decided when
 the CMS models land.
 
+## Authentication
+
+Sign in with a password, or with a Google or Facebook identity the caller has
+already verified. `identifier` takes an **email address or a phone number** in
+either format — the API works out which was given.
+
+```
+POST /api/v1/auth/login        {"identifier": "...", "password": "..."}
+POST /api/v1/auth/social       {"provider": "google", "provider_user_id": "..."}
+POST /api/v1/auth/refresh      {"refresh_token": "..."}
+POST /api/v1/auth/logout       {"refresh_token": "..."}      requires a token
+POST /api/v1/auth/logout-all                                 requires a token
+GET  /api/v1/auth/me                                         requires a token
+GET  /api/v1/auth/sessions                                   requires a token
+```
+
+Sign-in returns the account, its roles and its permission codes alongside the
+tokens, so a client can render its navigation without a second request.
+
+**Two tokens, with different jobs.** The access token proves who you are and
+lasts 30 minutes; the refresh token only mints new access tokens and lasts 7
+days. Send the access token as `Authorization: Bearer <token>`.
+
+**The access token carries no roles or permissions** — only a subject, a type,
+an id and an expiry. Authorization is read from the database on each request,
+which costs one indexed query and means **a revoked role stops working
+immediately** rather than lingering until the token expires.
+
+**Sessions are rows, which is what makes logout mean something.** A signed JWT
+is valid until it expires no matter what the server thinks, so every refresh
+token gets a row in `refresh_tokens`; logout marks it revoked and refreshing
+checks it. Only the **SHA-256 digest** is stored — a leaked database dump hands
+over no usable sessions.
+
+**Refresh tokens rotate.** Each one works exactly once; refreshing retires the
+token presented and issues a new pair. Presenting an already-rotated token
+means two parties hold it, and there is no way to tell the thief from the real
+user — so **every session on the account ends** and the user signs in again.
+A token revoked by an ordinary sign-out is *not* treated this way: a client
+racing its own logout is a timing accident, not an attack.
+
+**What logout does and does not do.** It revokes the refresh token, ending the
+session. The access token is not revocable and stays usable until it expires,
+which is exactly why its lifetime is short — clients should discard it on
+sign-out.
+
+Guarding a route is declarative, so the check cannot be forgotten in a handler:
+
+```python
+from app.modules.auth.dependencies import CurrentUser, require_permission
+
+@router.post("", dependencies=[Depends(require_permission("user.create"))])
+async def create_user(user: CurrentUser, ...): ...
+```
+
+`CurrentUser` requires a token; `OptionalUser` allows anonymous callers but
+still rejects a bad token, rather than quietly treating it as signed out.
+
+A few deliberate choices worth knowing:
+
+- **Failed sign-ins are indistinguishable.** A wrong password and an unknown
+  address return the same message, and an unknown account still pays for a
+  bcrypt hash so it is not measurably faster to reject. A *suspended* account
+  is told why — the password was already proven, so nothing leaks.
+- **`SECRET_KEY` must be at least 32 bytes.** HS256 signs every token with it,
+  and RFC 7518 requires a key at least as long as the hash. The application
+  refuses to boot in production with a shorter one, or with the placeholder.
+- **`alg: none` cannot get through** — the decoder names the algorithm it
+  accepts rather than trusting the token's header.
+- **Deleting or suspending a user stops their tokens working** without anyone
+  revoking anything, because the user is loaded on every request.
+
 ## Users
 
 An account is identified by an **email address, a phone number, or both** —
@@ -302,7 +381,8 @@ user, created = await service.resolve_social_login(payload)
   identifier to satisfy the `CHECK` constraint.
 
 The caller must have verified the identity with the provider first; exchanging
-the authorization code belongs to the authentication module.
+the authorization code belongs to the caller, and `POST /api/v1/auth/social`
+turns the verified result into a session.
 
 **Passwords** are bcrypt, work factor 12, in
 [app/core/security.py](app/core/security.py). Over 72 bytes is **refused, not
