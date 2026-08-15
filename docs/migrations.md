@@ -62,6 +62,43 @@ built from the `POSTGRES_*` values in `.env`. `alembic.ini` intentionally has no
 | `alembic revision -m "msg"`                | Create an empty revision to hand-write         |
 | `alembic upgrade head --sql`               | Print SQL instead of executing it              |
 
+## Key Conventions
+
+Every table has a **single-column UUID `id` primary key**, including the
+association tables `user_roles` and `role_permissions`. That keeps every row
+addressable by one value, matches the rest of the schema, and lets an
+association later gain columns such as `assigned_by` or `expires_at` without a
+key change.
+
+An association table therefore **must** also carry a `UNIQUE` constraint on
+its natural key:
+
+```python
+UniqueConstraint("user_id", "role_id", name="uq_user_roles_user_role")
+```
+
+That constraint is doing the job the composite primary key used to do. Drop it
+and the same role can be assigned to a user twice. `tests/test_schema.py`
+asserts both the `id` primary keys and these unique constraints, and proves the
+duplicate rejection against PostgreSQL rather than trusting the metadata.
+
+Add an index on the **second** column of the pair as well. The unique index
+only serves queries leading with the first column, so "which users hold this
+role" would otherwise scan the table.
+
+## Editing an Applied Migration
+
+Only safe before a revision has been deployed anywhere. Editing one that other
+databases already ran produces a `downgrade()` that no longer matches their
+schema — dropping an index the old version never created, for example.
+
+Before deploy: edit the revision, then rebuild the local database. If the
+edited `downgrade()` can no longer run, drop the affected tables, rewind
+`alembic_version` to the previous revision, and `alembic upgrade head`.
+
+After deploy: never edit. Write a new revision with `op.add_column`,
+`op.create_unique_constraint` and friends.
+
 ## Conventions
 
 - **One head, always.** `alembic heads` must return a single revision. If two

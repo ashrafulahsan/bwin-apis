@@ -96,8 +96,10 @@ class UserRepository(BaseRepository[User]):
         statement = pg_insert(user_roles).values(
             [{"user_id": user_id, "role_id": role_id} for role_id in role_ids]
         )
+        # Conflict target is the unique constraint on the pair, not the
+        # surrogate primary key.
         statement = statement.on_conflict_do_nothing(
-            index_elements=["user_id", "role_id"]
+            constraint="uq_user_roles_user_role"
         )
 
         result = await self.session.execute(statement)

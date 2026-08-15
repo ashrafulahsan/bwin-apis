@@ -87,9 +87,10 @@ class PermissionRepository(BaseRepository[Permission]):
                 for permission_id in permission_ids
             ]
         )
-        # Re-granting is a no-op rather than a primary key violation.
+        # Re-granting is a no-op. The conflict target is the unique
+        # constraint on the pair, not the surrogate primary key.
         statement = statement.on_conflict_do_nothing(
-            index_elements=["role_id", "permission_id"]
+            constraint="uq_role_permissions_role_permission"
         )
 
         result = await self.session.execute(statement)
