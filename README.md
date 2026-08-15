@@ -258,6 +258,46 @@ a working page into an error.
 suits per-language columns. Which one the content modules use is decided when
 the CMS models land.
 
+## Roles
+
+Seven roles ship with the platform, seeded by migration so every environment
+starts identical:
+
+| Slug              | Name            | Level | Purpose                                    |
+| ----------------- | --------------- | ----- | ------------------------------------------ |
+| `super-admin`     | Super Admin     | 100   | Unrestricted access                        |
+| `admin`           | Admin           | 90    | Users, roles, platform settings            |
+| `content-manager` | Content Manager | 70    | Owns the content library, publishes pages  |
+| `editor`          | Editor          | 60    | Writes and edits, cannot publish           |
+| `instructor`      | Instructor      | 50    | Creates and teaches courses                |
+| `support`         | Support         | 40    | Assists learners                           |
+| `student`         | Student         | 10    | Enrols and tracks progress                 |
+
+`level` orders privilege for comparisons such as "may this user edit that
+one" — `role.outranks(other)`. The gaps are deliberate, leaving room for
+custom roles to sit between the built-in ones.
+
+**Endpoints** — `GET|POST /api/v1/roles`, `GET|PATCH|DELETE /api/v1/roles/{id}`,
+plus `GET /roles/all` for pickers, `GET /roles/slug/{slug}`, and
+`POST /roles/{id}/restore`.
+
+Three rules protect the platform from locking itself out:
+
+- **System roles cannot be deleted.** Removing Super Admin would shut every
+  administrator out with no way back.
+- **A system role's `level` is immutable.** Authorization compares levels, so
+  demoting a built-in role could silently give a Student more power than an
+  Admin. Renaming is allowed — the slug is what code depends on.
+- **Slugs never change.** They are derived from the name at creation and fixed
+  thereafter, so renaming "Instructor" to "Teacher" breaks nothing.
+
+Deletion is soft. Note that `name` and `slug` carry database-level unique
+constraints that ignore `deleted_at`, so a deleted role keeps its name — the
+API says so explicitly and points you at restore.
+
+Permission enforcement arrives with authentication; `permissions.py` already
+reserves the names.
+
 ## Translations
 
 UI strings live in the `translations` table, one row per key per language.
@@ -450,3 +490,15 @@ black .             # format
 ruff check .        # lint
 pre-commit install  # enable git hooks
 ```
+
+### Testing
+
+The suite runs against a **separate `bwindb_test` database**, created and
+migrated automatically on first run. This is not optional: services commit for
+real and some fixtures truncate tables, so running against `bwindb` would
+destroy its seeded roles and translations. `tests/conftest.py` sets
+`POSTGRES_DB` before importing the app and refuses to start if it still points
+at `bwindb`. Override the name with `TEST_POSTGRES_DB` if it collides.
+
+Because the test database is brought up with `alembic upgrade head`, the suite
+also exercises the real migrations rather than a `create_all` shortcut.
