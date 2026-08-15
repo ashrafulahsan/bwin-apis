@@ -139,6 +139,29 @@ silently with the client already told the request succeeded.
 `GET /api/v1/health/ready` verifies connectivity and returns 503 when the
 database is unreachable.
 
+## Migrations
+
+Alembic owns the schema. It reads its connection string from `.env` via
+`settings.sync_database_url`, so `alembic.ini` holds no credentials.
+
+```bash
+alembic upgrade head                              # apply pending revisions
+alembic revision --autogenerate -m "add courses"  # generate from model changes
+alembic downgrade -1                              # revert the last revision
+alembic current                                   # what the database is on
+alembic check                                     # fail if models drifted
+```
+
+`env.py` imports every `app/modules/<module>/models` package automatically, so
+a new module is picked up without editing it — but a model must be exported
+from that package's `__init__.py` to be visible to autogenerate.
+
+Always read a generated revision before applying it, and verify the rollback
+with `alembic downgrade -1 && alembic upgrade head`.
+
+The full workflow, conventions and troubleshooting are in
+[docs/migrations.md](docs/migrations.md).
+
 ## Configuration
 
 All settings live in [app/core/config.py](app/core/config.py) and are read from

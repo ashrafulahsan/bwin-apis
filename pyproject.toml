@@ -21,6 +21,9 @@ select = ["E", "F", "I", "B", "UP", "N", "C4", "SIM"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+# The project root contains an `alembic/` directory, which would otherwise
+# make isort classify the installed `alembic` package as first-party.
+known-third-party = ["alembic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
