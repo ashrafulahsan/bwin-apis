@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.database import dispose_engine
 from app.core.exceptions import register_exception_handlers
 from app.shared.schemas.response import APIResponse, success_response
 
@@ -16,11 +17,12 @@ from app.shared.schemas.response import APIResponse, success_response
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup and shutdown hooks.
 
-    Database, cache and background worker wiring is attached here as those
-    layers land in later commits.
+    Cache and background worker wiring is attached here as those layers land
+    in later commits.
     """
     settings.ensure_storage_dirs()
     yield
+    await dispose_engine()
 
 
 def create_application() -> FastAPI:

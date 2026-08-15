@@ -93,6 +93,52 @@ modules/<module>/
 - `snake_case` naming, plural table names
 - REST standards, versioned under `/api/v1/`
 
+## Database
+
+PostgreSQL 13+ is required (`gen_random_uuid()` must be built in). Create the
+database once, then point `.env` at it:
+
+```sql
+CREATE DATABASE bwindb;
+```
+
+[app/core/database.py](app/core/database.py) owns the async engine, the session
+factory and the declarative `Base`. Models inherit `Base` plus the mixins they
+need:
+
+```python
+from app.core.database import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+
+class CourseModule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    title: Mapped[str] = mapped_column(String(255))
+    # __tablename__ is derived automatically -> "course_modules"
+```
+
+| Piece                  | Behaviour                                                            |
+| ---------------------- | -------------------------------------------------------------------- |
+| `Base`                 | Derives `__tablename__` as the snake_case plural of the class name    |
+| `UUIDPrimaryKeyMixin`  | `id` UUID, defaulted server-side by `gen_random_uuid()`               |
+| `TimestampMixin`       | `created_at` / `updated_at`, both maintained by PostgreSQL            |
+| `SoftDeleteMixin`      | Nullable indexed `deleted_at` plus an `is_deleted` property           |
+| `NAMING_CONVENTION`    | Deterministic constraint names, so Alembic diffs stay stable          |
+
+Inject a session with `DbSession` from
+[app/core/dependencies.py](app/core/dependencies.py):
+
+```python
+@router.get("/{course_id}")
+async def get_course(course_id: UUID, db: DbSession) -> APIResponse[CourseRead]: ...
+```
+
+The dependency rolls back and closes automatically. **Services own the
+transaction and call `await db.commit()` explicitly** — FastAPI runs dependency
+teardown after the response has been sent, so committing there would fail
+silently with the client already told the request succeeded.
+
+`GET /api/v1/health/ready` verifies connectivity and returns 503 when the
+database is unreachable.
+
 ## Configuration
 
 All settings live in [app/core/config.py](app/core/config.py) and are read from

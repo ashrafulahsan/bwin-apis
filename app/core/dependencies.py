@@ -9,9 +9,11 @@ those layers land.
 from typing import Annotated
 
 from fastapi import Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings, settings
 from app.core.constants import DEFAULT_PAGE, SortOrder
+from app.core.database import get_db
 
 
 class PaginationParams:
@@ -72,6 +74,7 @@ class SearchParams:
         self.search = search.strip() if search else None
 
 
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 PaginationDep = Annotated[PaginationParams, Depends(PaginationParams)]
 SortDep = Annotated[SortParams, Depends(SortParams)]

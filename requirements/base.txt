@@ -1,6 +1,13 @@
 # Runtime dependencies.
-# Database, cache and auth packages are added in the commits that introduce them.
+# Cache and auth packages are added in the commits that introduce them.
+
+# Web
 fastapi>=0.118.0
 uvicorn[standard]>=0.37.0
 pydantic>=2.12.0
 pydantic-settings>=2.11.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.36
+asyncpg>=0.30.0          # async driver used by the application
+psycopg[binary]>=3.2     # blocking driver used by Alembic

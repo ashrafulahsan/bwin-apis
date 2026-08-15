@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_user: str = "postgres"
     postgres_password: SecretStr = SecretStr("postgres")
-    postgres_db: str = "bwin_db"
+    postgres_db: str = "bwindb"
     db_echo: bool = False
     db_pool_size: int = 5
     db_max_overflow: int = 10
