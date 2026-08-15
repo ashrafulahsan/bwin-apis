@@ -51,6 +51,8 @@ class SettingKey(StrEnum):
     FRONTEND_URL = "frontend_url"
     #: Path appended to the frontend URL after a social sign-in.
     SOCIAL_LOGIN_REDIRECT_PATH = "social_login_redirect_path"
+    #: Frontend page that takes a reset token and asks for a new password.
+    PASSWORD_RESET_PATH = "password_reset_path"
 
     # -- Google ---------------------------------------------------------
     GOOGLE_AUTH_ENABLED = "google_auth_enabled"
@@ -123,6 +125,17 @@ SYSTEM_SETTINGS: list[SettingDefinition] = [
         group=SettingGroup.GENERAL,
         label="Social sign-in redirect path",
         description="Appended to the frontend URL after a social sign-in.",
+    ),
+    _definition(
+        SettingKey.PASSWORD_RESET_PATH,
+        value="/reset-password",
+        value_type=SettingType.STRING,
+        group=SettingGroup.GENERAL,
+        label="Password reset page",
+        description=(
+            "Frontend page a reset link points at. The token is appended as "
+            "`?token=`."
+        ),
     ),
     _definition(
         SettingKey.GOOGLE_AUTH_ENABLED,

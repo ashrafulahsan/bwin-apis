@@ -20,6 +20,17 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def truncate_to_second(value: datetime) -> datetime:
+    """Drop the microseconds.
+
+    For comparing against values that only ever carry whole seconds - a JWT's
+    `iat` and `exp` claims, most obviously. Comparing those against a
+    microsecond-precise timestamp makes anything issued in the same second
+    look older than it is.
+    """
+    return value.replace(microsecond=0)
+
+
 def ensure_utc(value: datetime) -> datetime:
     """Return `value` in UTC, assuming naive input is already UTC."""
     if value.tzinfo is None:

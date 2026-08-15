@@ -103,6 +103,15 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+    tokens_valid_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        default=None,
+        doc=(
+            "Access tokens issued before this are refused. Set when the "
+            "password changes, which is the one thing an access token cannot "
+            "otherwise be told about."
+        ),
+    )
 
     roles: Mapped[list[Role]] = relationship(
         secondary=user_roles,

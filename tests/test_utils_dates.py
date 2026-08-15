@@ -15,6 +15,7 @@ from app.shared.utils.dates import (
     start_of_day,
     time_ago,
     to_iso,
+    truncate_to_second,
     utc_now,
 )
 
@@ -116,3 +117,19 @@ def test_time_ago_for_past_moments(delta: timedelta, expected: str) -> None:
 )
 def test_time_ago_for_future_moments(delta: timedelta, expected: str) -> None:
     assert time_ago(NOW + delta, now=NOW) == expected
+
+
+def test_truncate_to_second_drops_microseconds() -> None:
+    """JWT `iat` is whole seconds; comparing against more precision misleads."""
+    moment = datetime(2026, 8, 15, 12, 30, 45, 987654, tzinfo=UTC)
+
+    truncated = truncate_to_second(moment)
+
+    assert truncated == datetime(2026, 8, 15, 12, 30, 45, tzinfo=UTC)
+    assert truncated <= moment
+
+
+def test_truncating_keeps_the_timezone() -> None:
+    moment = datetime(2026, 8, 15, 12, 30, 45, 1, tzinfo=UTC)
+
+    assert truncate_to_second(moment).tzinfo is UTC

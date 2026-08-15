@@ -219,7 +219,32 @@ class AuthService:
             raise UnauthorizedException("This account is no longer available.")
 
         self._guard_can_sign_in(user)
+        self._guard_not_superseded(user, claims)
         return user
+
+    @staticmethod
+    def _guard_not_superseded(user: User, claims: TokenClaims) -> None:
+        """Refuse a token that predates the last password change.
+
+        Revoking refresh tokens ends a session's ability to *renew*, but the
+        access token it already holds keeps working until it expires. That is
+        an acceptable gap for a sign-out, and not for a password reset, where
+        the whole point is to lock someone out now rather than in half an
+        hour.
+
+        `iat` is whole seconds, so the cutoff is stored truncated to the
+        second to match - see `truncate_to_second`. Comparing a whole-second
+        `iat` against a cutoff carrying microseconds would reject the token
+        issued by signing in immediately afterwards, which is the very next
+        thing someone does after resetting a password.
+        """
+        if user.tokens_valid_from is None:
+            return
+
+        if claims.issued_at < user.tokens_valid_from:
+            raise UnauthorizedException(
+                "The password for this account has changed. Please sign in again."
+            )
 
     # -- Helpers --------------------------------------------------------
 
@@ -231,6 +256,18 @@ class AuthService:
             raise UnauthorizedException("This token has expired.") from exc
         except TokenError as exc:
             raise UnauthorizedException("This token is not valid.") from exc
+
+    async def issue_session(
+        self, user: User, context: SessionContext | None = None
+    ) -> TokenPair:
+        """Open a session for a user whose identity is already established.
+
+        Used after a password change, where the caller has just invalidated
+        their own access token and needs a working one back.
+        """
+        pair = await self._issue_tokens(user, context)
+        await self.session.commit()
+        return pair
 
     async def _issue_tokens(
         self, user: User, context: SessionContext | None

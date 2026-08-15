@@ -309,7 +309,10 @@ racing its own logout is a timing accident, not an attack.
 **What logout does and does not do.** It revokes the refresh token, ending the
 session. The access token is not revocable and stays usable until it expires,
 which is exactly why its lifetime is short — clients should discard it on
-sign-out.
+sign-out. A *password change* is the exception: that stamps
+`tokens_valid_from` on the user and every older access token fails at once,
+because there the whole point is to cut someone off now rather than in half an
+hour.
 
 Guarding a route is declarative, so the check cannot be forgotten in a handler:
 
@@ -336,6 +339,64 @@ A few deliberate choices worth knowing:
   accepts rather than trusting the token's header.
 - **Deleting or suspending a user stops their tokens working** without anyone
   revoking anything, because the user is loaded on every request.
+
+### Password recovery
+
+```
+POST /api/v1/auth/forgot-password        {"identifier": "..."}
+POST /api/v1/auth/reset-password/verify  {"token": "..."}
+POST /api/v1/auth/reset-password         {"token": "...", "new_password": "..."}
+POST /api/v1/auth/change-password        requires a token
+```
+
+`identifier` takes an email address **or a phone number**, the same as
+sign-in, and the link is sent back the way it was asked for.
+
+**`/forgot-password` answers identically whatever happens** — unknown address,
+suspended account, or a request that tripped the throttle all return the same
+message with the same status. A form open to the internet that behaved
+differently for a registered address would be a way to enumerate the
+platform's users. Nothing is raised for an unknown account; the refusals are
+logged where the person asking cannot see them.
+
+Requests are throttled per account — one a minute, five an hour — so this
+cannot be used to flood someone's inbox. The throttle is invisible in the
+response, for the same reason.
+
+**A link works exactly once, and asking for a new one retires the old.** Both
+matter: without the second, an attacker who triggered a reset earlier still
+holds a working token after the real owner has been through the flow. Links
+last an hour, and only the SHA-256 digest is stored — a database dump gives up
+no working links.
+
+**A successful reset invalidates every token on the account — access tokens
+included.** Revoking refresh tokens alone would leave whoever prompted the
+reset holding a working access token for the rest of its lifetime, which is
+the half hour the reset was meant to take away from them. A `tokens_valid_from`
+stamp on the user makes older access tokens fail on their next request. It
+also **marks the contact verified**: receiving the link proves control of the
+address, which is exactly what verification means, so an account that never
+clicked its confirmation email comes out unstuck and active.
+
+`/reset-password/verify` exists so the page behind the link can say it has
+expired *before* asking someone to think of a new password. It returns a
+masked identifier — `lo•••••@bwin.example.com` — enough to recognise your own
+account, not enough for a stranger holding the link to learn whose it is.
+
+`/change-password` is the companion for someone already signed in: no link,
+since the access token already proves who they are. It retires every token the
+account held — **including the one that made the request** — and hands back a
+replacement pair in the response, so the client changing the password stays
+signed in while everything else is cut off. Pass
+`sign_out_other_sessions: false` to opt out of all of it.
+
+> **Delivery is not built yet.** There is no mail or SMS transport until the
+> notifications module lands, so links go behind a `ResetLinkSender`
+> interface whose default writes them to the log. Outside production it logs
+> the whole link, which is how you complete the flow without a mailbox; in
+> production it logs only *that* one was sent, since a log file should not be
+> a way into every account. Swapping in a real sender changes nothing in the
+> service.
 
 ## Social Login (Google and Facebook)
 

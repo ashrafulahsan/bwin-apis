@@ -29,7 +29,8 @@ from app.modules.users.constants import (
 MIN_PASSWORD_LENGTH = 8
 
 
-def _validate_password(value: str) -> str:
+def validate_password(value: str) -> str:
+    """Shared by every schema that accepts a password, including resets."""
     if len(value) < MIN_PASSWORD_LENGTH:
         raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
 
@@ -94,7 +95,7 @@ class UserCreate(UserBase):
     @field_validator("password")
     @classmethod
     def check_password(cls, value: str | None) -> str | None:
-        return _validate_password(value) if value is not None else None
+        return validate_password(value) if value is not None else None
 
     @model_validator(mode="after")
     def require_an_identifier(self) -> Self:
@@ -141,7 +142,7 @@ class PasswordSet(BaseModel):
     @field_validator("new_password")
     @classmethod
     def check_password(cls, value: str) -> str:
-        return _validate_password(value)
+        return validate_password(value)
 
 
 class UserIdentityRead(BaseModel):
