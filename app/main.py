@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
 from app.shared.schemas.response import APIResponse, success_response
 
 
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Database, cache and background worker wiring is attached here as those
     layers land in later commits.
     """
+    settings.ensure_storage_dirs()
     yield
 
 
@@ -40,6 +42,8 @@ def create_application() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    register_exception_handlers(application)
 
     application.include_router(api_router, prefix=settings.api_v1_prefix)
 

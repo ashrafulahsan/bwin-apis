@@ -93,9 +93,26 @@ modules/<module>/
 - `snake_case` naming, plural table names
 - REST standards, versioned under `/api/v1/`
 
+## Configuration
+
+All settings live in [app/core/config.py](app/core/config.py) and are read from
+the environment, falling back to `.env`. Copy `.env.example` to `.env` and edit
+it — see that file for every available key.
+
+- Secrets (`SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`) are `SecretStr`,
+  so they never appear in logs, tracebacks, or `model_dump()` output.
+- Connection strings are assembled from parts: `settings.database_url`,
+  `settings.sync_database_url` (Alembic), `settings.redis_url`.
+- `ENVIRONMENT=production` disables `/docs`, `/redoc` and `/openapi.json`, and
+  the app refuses to boot if `SECRET_KEY` is still the default or `DEBUG` is on.
+
+Inject settings into a route with `SettingsDep` from
+[app/core/dependencies.py](app/core/dependencies.py), which also provides
+`PaginationDep`, `SortDep` and `SearchDep`.
+
 ## Response Format
 
-Every endpoint returns the same envelope:
+Every successful endpoint returns the same envelope:
 
 ```json
 {
@@ -104,6 +121,44 @@ Every endpoint returns the same envelope:
   "data": {}
 }
 ```
+
+Failures keep that shape and add `error_code`, plus `errors` for field level
+validation problems:
+
+```json
+{
+  "success": false,
+  "message": "Request validation failed.",
+  "data": null,
+  "error_code": "VALIDATION_ERROR",
+  "errors": [{ "field": "body.email", "message": "field required", "type": "missing" }]
+}
+```
+
+## Error Handling
+
+Services raise the exceptions in [app/core/exceptions.py](app/core/exceptions.py)
+rather than `HTTPException`, so business logic stays free of HTTP concerns:
+
+| Exception                     | Status | `error_code`          |
+| ----------------------------- | ------ | --------------------- |
+| `BadRequestException`         | 400    | `BAD_REQUEST`         |
+| `UnauthorizedException`       | 401    | `UNAUTHORIZED`        |
+| `ForbiddenException`          | 403    | `FORBIDDEN`           |
+| `NotFoundException`           | 404    | `NOT_FOUND`           |
+| `ConflictException`           | 409    | `CONFLICT`            |
+| `ValidationException`         | 422    | `VALIDATION_ERROR`    |
+| `TooManyRequestsException`    | 429    | `RATE_LIMITED`        |
+| `ServiceUnavailableException` | 503    | `SERVICE_UNAVAILABLE` |
+
+```python
+raise NotFoundException("Course")   # -> 404 {"message": "Course not found.", ...}
+```
+
+`register_exception_handlers()` also converts FastAPI's own aborts, request
+validation errors, and unhandled exceptions into the same envelope. Unhandled
+errors are logged with a full traceback and return a generic message whenever
+`DEBUG` is off.
 
 ## Development
 

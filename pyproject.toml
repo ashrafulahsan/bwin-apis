@@ -15,6 +15,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "C4", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# Project convention: application errors are named `*Exception`, not `*Error`.
+"app/core/exceptions.py" = ["N818"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 
