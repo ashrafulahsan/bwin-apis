@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import DEFAULT_LANGUAGE
@@ -13,6 +13,7 @@ from app.modules.users.constants import (
     EMAIL_MAX_LENGTH,
     NAME_MAX_LENGTH,
     PHONE_MAX_LENGTH,
+    PROVIDER_USER_ID_MAX_LENGTH,
     UserStatus,
 )
 from app.modules.users.models.user_identity import UserIdentity
@@ -61,6 +62,36 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     )
     language: Mapped[str] = mapped_column(
         String(5), default=DEFAULT_LANGUAGE.value, nullable=False
+    )
+
+    # -- Social sign-in -------------------------------------------------
+    # `user_identities` remains the source of truth: it holds the uniqueness
+    # constraints and can carry several providers per account. These columns
+    # are a denormalized copy for the common single-provider case, so a list
+    # screen can filter and sort on them without a join. Written in exactly
+    # one place - `UserRepository._sync_social_columns`, which recomputes them
+    # from the identity rows - so the two cannot drift apart.
+    google_id: Mapped[str | None] = mapped_column(
+        String(PROVIDER_USER_ID_MAX_LENGTH), unique=True, index=True, default=None
+    )
+    facebook_id: Mapped[str | None] = mapped_column(
+        String(PROVIDER_USER_ID_MAX_LENGTH), unique=True, index=True, default=None
+    )
+    social_provider: Mapped[str | None] = mapped_column(
+        String(30),
+        default=None,
+        doc="The provider this account first arrived through, if any.",
+    )
+    is_social_login: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        # A server default too, not just a Python one: this column is NOT
+        # NULL, and anything writing a row without going through the ORM - a
+        # migration, a repair script - would otherwise fail on it.
+        server_default=false(),
+        nullable=False,
+        index=True,
+        doc="Whether any social account is linked.",
     )
 
     email_verified_at: Mapped[datetime | None] = mapped_column(

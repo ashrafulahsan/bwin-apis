@@ -174,6 +174,10 @@ class UserRead(BaseModel):
     email_verified: bool
     phone_verified: bool
     has_password: bool
+    #: Which provider the account arrived through, if any. The provider's own
+    #: identifiers are in `identities` rather than repeated here.
+    social_provider: str | None
+    is_social_login: bool
     last_login_at: datetime | None
     roles: list[RoleSummary]
     identities: list[UserIdentityRead]
@@ -203,9 +207,10 @@ class UserRoleAssignment(BaseModel):
 class SocialLogin(BaseModel):
     """Identity handed back by Google or Facebook.
 
-    The caller is responsible for having verified this with the provider -
-    exchanging the authorization code and validating the token happens in the
-    authentication module.
+    The caller is responsible for having verified this with the provider. The
+    OAuth endpoints do that themselves and fill this in from what the provider
+    actually returned; a backend posting to `/auth/social` directly is
+    asserting it has done the same.
     """
 
     provider: AuthProvider = Field(examples=["google", "facebook"])
@@ -218,6 +223,15 @@ class SocialLogin(BaseModel):
     first_name: str | None = Field(default=None, max_length=NAME_MAX_LENGTH)
     last_name: str | None = Field(default=None, max_length=NAME_MAX_LENGTH)
     avatar_url: str | None = None
+    email_verified: bool = Field(
+        default=True,
+        description=(
+            "Whether the provider states this address is verified. An "
+            "unverified address is never linked to an existing account: "
+            "anyone can put any address on a profile, and linking on that "
+            "basis would be account takeover."
+        ),
+    )
 
     @field_validator("provider")
     @classmethod

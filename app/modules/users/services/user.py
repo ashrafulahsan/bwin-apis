@@ -326,11 +326,23 @@ class UserService:
         if existing is not None:
             return existing, False
 
-        # The provider verified this address, so linking to an account already
-        # holding it is safe and avoids a duplicate account for the same person.
         if payload.email:
             by_email = await self.repository.get_by_email(payload.email)
             if by_email is not None:
+                if not payload.email_verified:
+                    # Linking on an unverified address is account takeover:
+                    # anyone can put someone else's address on a profile and
+                    # then sign in as them. Refuse, and point at the safe
+                    # route - sign in normally, then link from settings.
+                    raise ForbiddenException(
+                        f"{payload.provider.value.title()} has not verified "
+                        f"'{payload.email}', and an account already uses it. "
+                        "Sign in with your password first, then link the "
+                        "account from your profile."
+                    )
+
+                # The provider vouched for the address, so this is the same
+                # person - link rather than create a duplicate account.
                 await self.repository.add_identity(
                     by_email.id,
                     payload.provider.value,
@@ -352,10 +364,11 @@ class UserService:
             first_name=payload.first_name or payload.email.split("@")[0],
             last_name=payload.last_name,
             avatar_url=payload.avatar_url,
-            # The provider already proved the address, so the account is
-            # active and verified from the start.
+            # No password was set and none is needed, so the account is
+            # active rather than pending. The address is marked verified only
+            # if the provider actually says so.
             status=UserStatus.ACTIVE.value,
-            email_verified_at=utc_now(),
+            email_verified_at=utc_now() if payload.email_verified else None,
         )
 
         await self.repository.add_identity(

@@ -102,10 +102,14 @@ def require_permission(*codes: str, require_all: bool = True) -> UserDependency:
 
         if not satisfied:
             missing = sorted(set(codes) - held)
-            joiner = "and" if require_all else "or"
-            raise ForbiddenException(
-                f"This action requires the {joiner} of: {', '.join(missing)}."
-            )
+            if len(missing) == 1:
+                raise ForbiddenException(
+                    f"This action requires the '{missing[0]}' permission."
+                )
+
+            joiner = " and " if require_all else " or "
+            listed = joiner.join(f"'{code}'" for code in missing)
+            raise ForbiddenException(f"This action requires {listed}.")
 
         return user
 

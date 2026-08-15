@@ -43,6 +43,31 @@ class AuthProvider(StrEnum):
 SOCIAL_PROVIDERS = frozenset({AuthProvider.GOOGLE, AuthProvider.FACEBOOK})
 
 
+class SocialProvider(StrEnum):
+    """The social providers only, for use in a URL path.
+
+    `AuthProvider` includes `password`, which is not something a browser can
+    be redirected to. Using this in the route means `/auth/password/login`
+    is a 422 from the router rather than a confusing error from inside the
+    OAuth service.
+    """
+
+    GOOGLE = "google"
+    FACEBOOK = "facebook"
+
+    def as_auth_provider(self) -> AuthProvider:
+        return AuthProvider(self.value)
+
+
+#: The denormalized column mirroring each provider's id on `users`. The
+#: `user_identities` table stays the source of truth; these columns exist so a
+#: user list can filter and sort on a provider without a join.
+PROVIDER_ID_COLUMNS: dict[str, str] = {
+    AuthProvider.GOOGLE.value: "google_id",
+    AuthProvider.FACEBOOK.value: "facebook_id",
+}
+
+
 class IdentifierType(StrEnum):
     """Which credential a sign-in identifier represents."""
 

@@ -17,3 +17,4 @@ psycopg[binary]>=3.2     # blocking driver used by Alembic
 bcrypt>=4.2.0
 pyjwt>=2.10.0
 email-validator>=2.2.0
+httpx>=0.28.0            # OAuth token exchange and provider profile calls

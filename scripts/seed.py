@@ -26,6 +26,7 @@ from app.core.constants import Language
 from app.modules.permissions.services.permission import PermissionService
 from app.modules.roles.repositories.role import RoleRepository
 from app.modules.roles.services.role import RoleService
+from app.modules.settings.services.setting import SettingService
 from app.modules.translations.services.translation import TranslationService
 from app.modules.users.constants import AuthProvider, UserStatus
 from app.modules.users.schemas.user import SocialLogin, UserCreate
@@ -161,12 +162,14 @@ DEMO_USERS: list[DemoUser] = [
 
 
 async def seed_reference_data(session: AsyncSession) -> dict[str, int]:
-    """Roles, permissions, default grants and translations."""
+    """Roles, permissions, default grants, settings and translations."""
     roles = await RoleService(session).seed_system_roles()
 
     permissions = PermissionService(session)
     created_permissions = await permissions.seed_system_permissions()
     grants = await permissions.seed_default_role_permissions()
+
+    settings_created = await SettingService(session).seed_system_settings()
 
     translations = await TranslationService(session).sync_all_locales()
 
@@ -174,6 +177,7 @@ async def seed_reference_data(session: AsyncSession) -> dict[str, int]:
         "roles": roles,
         "permissions": created_permissions,
         "roles_granted": len(grants),
+        "settings": settings_created,
         "translations": sum(translations.values()),
     }
 
@@ -273,6 +277,7 @@ async def main(password: str, *, force: bool, skip_users: bool) -> None:
             f"  reference data: {counts['roles']} roles, "
             f"{counts['permissions']} permissions, "
             f"{counts['roles_granted']} roles granted, "
+            f"{counts['settings']} settings, "
             f"{counts['translations']} translations"
         )
 

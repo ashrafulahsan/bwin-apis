@@ -3,10 +3,11 @@
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.modules.users.constants import (
+    PROVIDER_ID_COLUMNS,
     IdentifierType,
     identifier_type,
     normalize_email,
@@ -162,6 +163,7 @@ class UserRepository(BaseRepository[User]):
         provider_user_id: str,
         email: str | None = None,
     ) -> UserIdentity:
+        """Link a provider account, keeping the mirrored columns in step."""
         identity = UserIdentity(
             user_id=user_id,
             provider=provider,
@@ -170,6 +172,8 @@ class UserRepository(BaseRepository[User]):
         )
         self.session.add(identity)
         await self.session.flush()
+
+        await self._sync_social_columns(user_id)
         return identity
 
     async def remove_identity(self, user_id: uuid.UUID, provider: str) -> int:
@@ -179,4 +183,41 @@ class UserRepository(BaseRepository[User]):
             )
         )
         await self.session.flush()
+
+        await self._sync_social_columns(user_id)
         return result.rowcount
+
+    async def _sync_social_columns(self, user_id: uuid.UUID) -> None:
+        """Rebuild `google_id`, `facebook_id` and friends from the identities.
+
+        Recomputed from the identity rows rather than patched incrementally:
+        the two can then never disagree, whatever order links and unlinks
+        arrive in. This is the only place those columns are written.
+        """
+        result = await self.session.execute(
+            select(UserIdentity)
+            .where(UserIdentity.user_id == user_id)
+            .order_by(UserIdentity.created_at)
+        )
+        identities = list(result.scalars().all())
+
+        values: dict[str, object] = dict.fromkeys(PROVIDER_ID_COLUMNS.values(), None)
+        for identity in identities:
+            column = PROVIDER_ID_COLUMNS.get(identity.provider)
+            if column:
+                values[column] = identity.provider_user_id
+
+        # The oldest link is the one the account arrived through.
+        values["social_provider"] = identities[0].provider if identities else None
+        values["is_social_login"] = bool(identities)
+
+        await self.session.execute(
+            update(User).where(User.id == user_id).values(**values)
+        )
+        await self.session.flush()
+
+        # The bulk UPDATE bypasses the identity map, so a `User` already loaded
+        # in this session would still show the old values.
+        loaded = await self.session.get(User, user_id)
+        if loaded is not None:
+            await self.session.refresh(loaded)

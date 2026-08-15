@@ -337,6 +337,83 @@ A few deliberate choices worth knowing:
 - **Deleting or suspending a user stops their tokens working** without anyone
   revoking anything, because the user is loaded on every request.
 
+## Social Login (Google and Facebook)
+
+The full OAuth 2.0 authorization code flow, in two steps per provider:
+
+```
+GET /api/v1/auth/google/login        →  302 to Google's consent screen
+GET /api/v1/auth/google/callback     →  exchanges the code, signs the user in
+GET /api/v1/auth/facebook/login
+GET /api/v1/auth/facebook/callback
+GET /api/v1/auth/providers           →  which buttons a sign-in page should show
+```
+
+The client secret never touches the browser: the code-for-token exchange
+happens server to server. On success the browser is redirected to the frontend
+with the **same JWT pair** a password sign-in returns.
+
+**Nothing is hardcoded.** Every value comes from the `settings` table and can
+be changed by an administrator without a deployment:
+
+| Key | |
+| --- | --- |
+| `google_auth_enabled` / `facebook_auth_enabled` | Off until credentials are filled in |
+| `google_client_id` / `google_client_secret` | From the Google Cloud console |
+| `facebook_app_id` / `facebook_app_secret` | From Meta for Developers |
+| `google_callback_url` / `facebook_callback_url` | Optional — derived from `app_base_url` when blank |
+| `app_base_url`, `frontend_url`, `social_login_redirect_path` | Where the API and the frontend live |
+
+Manage them through `/api/v1/settings`, which **requires `setting.view` /
+`setting.update`** — these rows hold client secrets, so an open settings API
+would be a credential leak with a URL. Secrets come back as `********`, and
+saving that mask back is refused rather than overwriting the real value.
+
+### Setting a provider up
+
+1. Register the callback with the provider. It must match **exactly** —
+   Google and Facebook both compare it byte for byte:
+   `https://your-api/api/v1/auth/google/callback`
+2. `PATCH /api/v1/settings` with the client id, secret and
+   `google_auth_enabled: "true"`.
+3. `GET /api/v1/auth/providers` — `usable` turns true, and any missing key is
+   named in `missing`.
+
+### What the flow guarantees
+
+- **State is bound to the browser.** A signed `state` alone is not enough, since
+  an attacker can start a sign-in and collect one. So the state carries only
+  the *digest* of a nonce, and the nonce goes to the browser in an HttpOnly,
+  SameSite=Lax cookie. Finishing needs both halves — which is what stops a
+  sign-in being completed inside someone else's session.
+- **Tokens come back in the URL fragment**, not the query string. A fragment
+  is never sent to a server, so it stays out of access logs, `Referer` headers
+  and proxy records.
+- **`redirect_to` cannot leave the site.** A target is honoured only on the
+  configured frontend's origin; anything else falls back to the default. An
+  open redirect on a page carrying tokens hands them to whoever asked.
+- **An unverified address is never linked to an existing account.** Anyone can
+  put someone else's address on a profile, so linking on that basis would be
+  account takeover. Such a sign-in is refused with a message pointing at the
+  safe route: sign in normally, then link from your profile. A *verified*
+  address links, which is what stops a duplicate account per provider.
+- **A cancelled sign-in returns to the frontend** with a readable error. A
+  browser mid-redirect cannot show a JSON error body.
+- Facebook accounts registered with a phone number arrive **without an email**;
+  that is refused with an explanation rather than crashing.
+
+With no `frontend_url` set, the callback returns the tokens as JSON instead —
+which is what makes the flow usable, and testable, without a frontend.
+
+### Fields on `users`
+
+`google_id`, `facebook_id`, `social_provider` and `is_social_login` sit on the
+user row for filtering and sorting without a join. **`user_identities` remains
+the source of truth** — it holds the uniqueness constraints and can carry
+several providers per account. The columns are written in exactly one place,
+`UserRepository._sync_social_columns`, which recomputes them from the identity
+rows rather than patching them, so the two cannot drift apart.
+
 ## Users
 
 An account is identified by an **email address, a phone number, or both** —
