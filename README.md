@@ -991,9 +991,10 @@ pre-commit install  # enable git hooks
 python -m scripts.seed
 ```
 
-Fills in roles, permissions, their default grants, translations, and a set of
-demo accounts — one per role, so every role has someone to test with. Safe to
-re-run: anything already present is left alone.
+Fills in roles, permissions, their default grants, translations, a set of demo
+accounts — one per role, so every role has someone to test with — and a working
+example of the blogs module. Safe to re-run: anything already present is left
+alone.
 
 | Account                            | Role(s)                      | Notes                    |
 | ---------------------------------- | ---------------------------- | ------------------------ |
@@ -1019,8 +1020,27 @@ deployment including production. The script refuses to run when
 `bwin.example.com` — `example.com` is reserved by RFC 2606 and can never
 receive mail.
 
+#### Demo blog content
+
+The blog seed is an LMS-shaped worked example rather than reference data: a
+nested `blog_category` tree (Teaching and Instruction, Learning Experience,
+Platform and Product, with children under each), a flat set of ten
+`blog_tag` labels, and nine posts filed under them.
+
+The posts exist to give every listing filter something to return — published,
+featured, scheduled for a future date, archived, and one still in draft,
+written by the Editor account that cannot publish it. Each carries the byline
+of the demo account that would really have written it, and only its keywords
+are set in the SEO columns, so the rest of `<head>` is served by the
+derivation the module does for a post that never filled those boxes in.
+
+Every post is created as a draft and then moved into its state through
+`publish` and `archive`, the same route the API offers, so nothing here is in
+a shape the application itself could not produce.
+
 `--skip-users` seeds only the reference data, which is what a real environment
-wants.
+wants. `--skip-content` leaves the blog categories, tags and posts out; seed
+users before content, since the bylines point at those accounts.
 
 ### Testing
 
