@@ -988,13 +988,44 @@ pre-commit install  # enable git hooks
 ### Seeding
 
 ```bash
-python -m scripts.seed
+python -m scripts.seed                     # everything
+python -m scripts.seed --list              # what is registered
+python -m scripts.seed --only reference    # what a real environment wants
+python -m scripts.seed --skip blogs
 ```
 
 Fills in roles, permissions, their default grants, translations, a set of demo
 accounts — one per role, so every role has someone to test with — and a working
 example of the blogs module. Safe to re-run: anything already present is left
 alone.
+
+`scripts/seed/` is a package with one module per domain and an explicit
+registry, so a new kind of seed data is a module plus a line rather than an
+edit to the entry point:
+
+| Seeder      | Runs after  | Fills in                                          |
+| ----------- | ----------- | ------------------------------------------------- |
+| `reference` | —           | roles, permissions, grants, settings, translations |
+| `users`     | `reference` | the demo accounts below                            |
+| `blogs`     | `users`     | blog categories, tags and posts                    |
+
+```
+scripts/seed/
+  base.py         what a seeder is, and the helpers they share
+  registry.py     every seeder, in the order they have to run
+  runner.py       the production guard, the session, the run itself
+  __main__.py     the command line
+  reference.py    roles, permissions, settings, translations
+  users.py        demo accounts
+  blogs.py        blog categories, tags and posts
+  data/           the specs, separated from the code that applies them
+```
+
+To add one: write `<domain>.py` with a `Seeder` subclass — a `name`, a
+`description`, whatever it `requires`, an idempotent `run`, and a `report` if
+there is something worth printing — put its rows in `data/<domain>.py`, and
+add the class to `SEEDERS` in `registry.py`. The command line picks it up from
+there, dependency warnings included.
 
 | Account                            | Role(s)                      | Notes                    |
 | ---------------------------------- | ---------------------------- | ------------------------ |
@@ -1015,7 +1046,7 @@ Password: `BwinDemo#2026` (override with `--password`). Phone numbers run
 
 **Seeding is a script, not a migration, on purpose.** These accounts share one
 known password, so a migration would plant well-known credentials on every
-deployment including production. The script refuses to run when
+deployment including production. Seeding refuses to run when
 `ENVIRONMENT=production` unless given `--force`. Addresses use
 `bwin.example.com` — `example.com` is reserved by RFC 2606 and can never
 receive mail.
@@ -1038,9 +1069,10 @@ Every post is created as a draft and then moved into its state through
 `publish` and `archive`, the same route the API offers, so nothing here is in
 a shape the application itself could not produce.
 
-`--skip-users` seeds only the reference data, which is what a real environment
-wants. `--skip-content` leaves the blog categories, tags and posts out; seed
-users before content, since the bylines point at those accounts.
+`--only reference` seeds just the reference data, which is what a real
+environment wants. `--skip blogs` leaves the categories, tags and posts out.
+Running `--only blogs` works too, but says so first: without the `users`
+seeder the posts have no byline.
 
 ### Testing
 

@@ -1,4 +1,4 @@
-"""Tests for the seeding script."""
+"""Tests for the seeding package."""
 
 from collections.abc import AsyncIterator
 
@@ -31,15 +31,20 @@ from app.modules.users.models.user import User
 from app.modules.users.models.user_identity import UserIdentity
 from app.modules.users.models.user_role import user_roles
 from app.modules.users.repositories.user import UserRepository
+from scripts.seed import __main__ as entrypoint
 from scripts.seed import (
-    DEMO_BLOG_CATEGORIES,
-    DEMO_BLOG_TAGS,
-    DEMO_BLOGS,
-    DEMO_USERS,
+    registry,
+    runner,
     seed_blog_content,
     seed_demo_users,
     seed_reference_data,
 )
+from scripts.seed.data.blogs import (
+    DEMO_BLOG_CATEGORIES,
+    DEMO_BLOG_TAGS,
+    DEMO_BLOGS,
+)
+from scripts.seed.data.users import DEMO_USERS
 
 PASSWORD = "SeedTest#2026"
 
@@ -446,3 +451,70 @@ def test_the_inactive_category_holds_no_posts() -> None:
 
     assert retired
     assert all(spec["category"] not in retired for spec in DEMO_BLOGS)
+
+
+# -- The registry -------------------------------------------------------
+
+
+def test_every_seeder_has_a_unique_name() -> None:
+    assert len(set(registry.SEEDER_NAMES)) == len(registry.SEEDERS)
+
+
+def test_seeders_are_registered_after_what_they_require() -> None:
+    """Registry order is run order, so a dependency has to come first."""
+    seen: set[str] = set()
+
+    for seeder in registry.SEEDERS:
+        assert set(seeder.requires) <= seen, f"'{seeder.name}' runs too early"
+        seen.add(seeder.name)
+
+
+def test_selecting_nothing_runs_everything() -> None:
+    assert registry.select() == registry.SEEDERS
+
+
+def test_a_selection_keeps_registry_order() -> None:
+    """Asking for them backwards must not run them backwards."""
+    selected = registry.select(only=["blogs", "reference"])
+
+    assert [seeder.name for seeder in selected] == ["reference", "blogs"]
+
+
+def test_only_and_skip_combine() -> None:
+    selected = registry.select(only=["reference", "users"], skip=["users"])
+
+    assert [seeder.name for seeder in selected] == ["reference"]
+
+
+def test_an_unknown_seeder_is_refused() -> None:
+    """A typo should name the mistake, not quietly seed less than asked."""
+    with pytest.raises(SystemExit, match="Unknown seeder: pages"):
+        registry.select(only=["pages"])
+
+
+def test_a_dependency_left_out_of_the_selection_is_reported() -> None:
+    """Blogs without users still work, but the posts lose their bylines."""
+    left_out = registry.missing_requirements(registry.select(only=["blogs"]))
+
+    assert left_out == [("blogs", "users")]
+
+
+def test_a_full_run_has_nothing_to_warn_about() -> None:
+    assert registry.missing_requirements(registry.select()) == []
+
+
+def test_counts_are_summarized_for_printing() -> None:
+    assert runner.summarize({"roles": 7, "settings": 0}) == "7 roles, 0 settings"
+    assert runner.summarize({}) == "nothing to do"
+
+
+def test_the_command_line_selects_seeders_by_name() -> None:
+    selected = entrypoint.selection(entrypoint.parse_args(["--skip", "blogs"]))
+
+    assert [seeder.name for seeder in selected] == ["reference", "users"]
+
+
+def test_the_superseded_skip_users_flag_still_skips_users() -> None:
+    selected = entrypoint.selection(entrypoint.parse_args(["--skip-users"]))
+
+    assert "users" not in [seeder.name for seeder in selected]
