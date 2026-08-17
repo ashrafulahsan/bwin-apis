@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.constants import TokenType
+from app.core.context import get_request_context
 from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.core.security import (
     TokenClaims,
@@ -18,6 +19,10 @@ from app.core.security import (
     dummy_verify,
     token_fingerprint,
     verify_password,
+)
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
 )
 from app.modules.auth.constants import (
     INVALID_CREDENTIALS_MESSAGE,
@@ -31,10 +36,12 @@ from app.modules.auth.schemas.auth import (
     SessionContext,
     TokenPair,
 )
+from app.modules.users.constants import AuthProvider
 from app.modules.users.models.user import User
 from app.modules.users.repositories.user import UserRepository
 from app.modules.users.schemas.user import SocialLogin, UserRead
 from app.modules.users.services.user import UserService
+from app.shared.services.activity_log_service import ActivityLogService
 from app.shared.utils.dates import utc_now
 
 logger = logging.getLogger(__name__)
@@ -45,10 +52,19 @@ SECONDS_PER_MINUTE = 60
 class AuthService:
     """Issues, renews and revokes the tokens that represent a signed-in user."""
 
+    #: Which social action a provider's sign-in is recorded as. Named per
+    #: provider rather than as one `social_login`, because "who has been
+    #: signing in through Facebook" is a question an auditor actually asks.
+    SOCIAL_ACTIONS = {
+        AuthProvider.GOOGLE: ActivityAction.GOOGLE_LOGIN,
+        AuthProvider.FACEBOOK: ActivityAction.FACEBOOK_LOGIN,
+    }
+
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.users = UserRepository(session)
         self.tokens = RefreshTokenRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.AUTH)
 
     # -- Signing in -----------------------------------------------------
 
@@ -66,18 +82,38 @@ class AuthService:
             # Still pay for a hash, so a missing account is not measurably
             # faster to reject than a wrong password.
             dummy_verify(payload.password)
+            await self._record_refusal(
+                f"Failed sign-in: no account for '{payload.identifier}'"
+            )
             raise UnauthorizedException(INVALID_CREDENTIALS_MESSAGE)
 
         if not verify_password(payload.password, user.password_hash):
             logger.info("Failed sign-in for user %s", user.id)
+            await self._record_refusal(
+                f"Failed sign-in: wrong password for {payload.identifier}", user=user
+            )
             raise UnauthorizedException(INVALID_CREDENTIALS_MESSAGE)
 
         # Only once the password is proven, so account state never leaks to
         # someone who could not sign in anyway.
-        self._guard_can_sign_in(user)
+        try:
+            self._guard_can_sign_in(user)
+        except (ForbiddenException, UnauthorizedException):
+            await self._record_refusal(
+                f"Refused sign-in: account is {user.status}", user=user
+            )
+            raise
 
         await self.users.update(user, last_login_at=utc_now())
         pair = await self._issue_tokens(user, context)
+
+        await self.activity.record(
+            ActivityAction.LOGIN,
+            entity=user,
+            description=f"{user.full_name} signed in",
+            actor=user,
+            new_values={"identifier": payload.identifier, "method": "password"},
+        )
         await self.session.commit()
 
         logger.info("User %s signed in", user.id)
@@ -97,10 +133,34 @@ class AuthService:
         """
         user, created = await UserService(self.session).resolve_social_login(payload)
 
-        self._guard_can_sign_in(user)
+        try:
+            self._guard_can_sign_in(user)
+        except (ForbiddenException, UnauthorizedException):
+            await self._record_refusal(
+                f"Refused {payload.provider.value} sign-in: account is {user.status}",
+                user=user,
+                action=self.SOCIAL_ACTIONS.get(
+                    payload.provider, ActivityAction.SOCIAL_LOGIN
+                ),
+            )
+            raise
 
         await self.users.update(user, last_login_at=utc_now())
         pair = await self._issue_tokens(user, context)
+
+        await self.activity.record(
+            self.SOCIAL_ACTIONS.get(payload.provider, ActivityAction.SOCIAL_LOGIN),
+            entity=user,
+            description=(
+                f"{user.full_name} signed in with {payload.provider.value}"
+                + (" for the first time, creating the account" if created else "")
+            ),
+            actor=user,
+            new_values={
+                "provider": payload.provider.value,
+                "account_created": created,
+            },
+        )
         await self.session.commit()
 
         logger.info("User %s signed in via %s", user.id, payload.provider.value)
@@ -134,8 +194,24 @@ class AuthService:
                 "Refresh token reuse detected for user %s, revoking all sessions",
                 stored.user_id,
             )
-            await self.tokens.revoke_all_for_user(
+            ended = await self.tokens.revoke_all_for_user(
                 stored.user_id, RevocationReason.REUSE_DETECTED
+            )
+            # Recorded in this transaction rather than detached: the revoke
+            # above is committed here too, so the entry describes something
+            # that really happened.
+            await self.activity.record_failure(
+                ActivityAction.TOKEN_REFRESH,
+                entity_type="User",
+                entity_id=stored.user_id,
+                description=(
+                    "Refresh token reuse detected; ended every session for "
+                    "this account"
+                ),
+                new_values={
+                    "reason": RevocationReason.REUSE_DETECTED,
+                    "sessions_ended": ended,
+                },
             )
             await self.session.commit()
             raise UnauthorizedException(
@@ -160,6 +236,13 @@ class AuthService:
 
         stored.revoke(RevocationReason.ROTATED)
         pair = await self._issue_tokens(user, context or self._context_of(stored))
+
+        await self.activity.record(
+            ActivityAction.TOKEN_REFRESH,
+            entity=user,
+            description=f"Renewed the session of {user.full_name}",
+            actor=user,
+        )
         await self.session.commit()
 
         return pair
@@ -182,6 +265,14 @@ class AuthService:
             return
 
         stored.revoke(RevocationReason.LOGOUT)
+
+        await self.activity.record(
+            ActivityAction.LOGOUT,
+            entity_type="User",
+            entity_id=user_id,
+            description="Signed out of one session",
+            new_values={"sessions_ended": 1},
+        )
         await self.session.commit()
 
         logger.info("User %s signed out of one session", user_id)
@@ -191,10 +282,44 @@ class AuthService:
         ended = await self.tokens.revoke_all_for_user(
             user_id, RevocationReason.LOGOUT_ALL
         )
+
+        await self.activity.record(
+            ActivityAction.LOGOUT,
+            entity_type="User",
+            entity_id=user_id,
+            description=f"Signed out of every session ({ended} open)",
+            new_values={"sessions_ended": ended, "scope": "all"},
+        )
         await self.session.commit()
 
         logger.info("User %s signed out of %d sessions", user_id, ended)
         return ended
+
+    async def _record_refusal(
+        self,
+        description: str,
+        *,
+        user: User | None = None,
+        action: ActivityAction = ActivityAction.LOGIN_FAILED,
+    ) -> None:
+        """Record a sign-in that was turned away.
+
+        On its own session, because the caller is about to raise: the
+        exception ends the request's transaction, and a refusal that
+        disappears with it is exactly the entry an audit trail is kept for.
+        """
+        await ActivityLogService.record_detached(
+            action,
+            module=ActivityModule.AUTH,
+            description=description,
+            entity_type="User",
+            entity_id=user.id if user else None,
+            context=(
+                get_request_context().with_actor(user)
+                if user is not None
+                else get_request_context()
+            ),
+        )
 
     async def list_sessions(
         self, user_id: uuid.UUID, *, active_only: bool = True

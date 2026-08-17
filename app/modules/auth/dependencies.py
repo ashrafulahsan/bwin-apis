@@ -12,6 +12,7 @@ from typing import Annotated, Any
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.core.context import bind_actor, client_ip
 from app.core.dependencies import DbSession
 from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.modules.auth.schemas.auth import SessionContext
@@ -34,7 +35,16 @@ async def get_current_user(db: DbSession, credentials: Credentials) -> User:
     if credentials is None or not credentials.credentials:
         raise UnauthorizedException("An access token is required for this endpoint.")
 
-    return await AuthService(db).authenticate(credentials.credentials)
+    user = await AuthService(db).authenticate(credentials.credentials)
+
+    # Who the caller is only becomes known here, after the middleware has
+    # built the rest of the request context. Binding it now is what lets a
+    # service - which never sees the request - record the name and roles
+    # behind the action. FastAPI resolves async dependencies in the same task
+    # as the endpoint, so this is the context every service goes on to read.
+    bind_actor(user)
+
+    return user
 
 
 async def get_optional_user(db: DbSession, credentials: Credentials) -> User | None:
@@ -48,7 +58,10 @@ async def get_optional_user(db: DbSession, credentials: Credentials) -> User | N
     if credentials is None or not credentials.credentials:
         return None
 
-    return await AuthService(db).authenticate(credentials.credentials)
+    user = await AuthService(db).authenticate(credentials.credentials)
+    bind_actor(user)
+
+    return user
 
 
 def get_session_context(request: Request) -> SessionContext:
@@ -59,17 +72,17 @@ def get_session_context(request: Request) -> SessionContext:
     rewrites the header - it is used for recognising your own sessions, never
     for an access decision.
     """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        ip_address = forwarded.split(",")[0].strip()
-    else:
-        ip_address = request.client.host if request.client else None
-
     user_agent = request.headers.get("user-agent")
 
     return SessionContext(
         user_agent=user_agent[:255] if user_agent else None,
-        ip_address=ip_address,
+        # One definition of "which address the caller is at", shared with the
+        # activity log - a session and an audit entry disagreeing about where
+        # a request came from would be worse than either being wrong.
+        ip_address=client_ip(
+            dict(request.headers),
+            request.client.host if request.client else None,
+        ),
     )
 
 

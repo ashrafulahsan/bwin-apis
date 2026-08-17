@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import DEFAULT_LANGUAGE, Language, SortOrder
 from app.core.exceptions import ConflictException
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.translations import loader
 from app.modules.translations.constants import namespace_of
 from app.modules.translations.models.translation import Translation
@@ -20,6 +24,7 @@ from app.modules.translations.schemas.translation import (
 )
 from app.shared.repositories.filters import Filter
 from app.shared.schemas.pagination import SupportsPagination
+from app.shared.services.activity_log_service import ActivityLogService, snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +38,7 @@ class TranslationService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repository = TranslationRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.TRANSLATIONS)
 
     # -- Reads ----------------------------------------------------------
 
@@ -142,6 +148,16 @@ class TranslationService:
             language=payload.language.value,
             value=payload.value,
         )
+
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=translation,
+            description=(
+                f"Added the {translation.language} translation of "
+                f"'{translation.key}'"
+            ),
+            new_values=snapshot(translation),
+        )
         await self.session.commit()
         return translation
 
@@ -149,13 +165,38 @@ class TranslationService:
         self, translation_id: uuid.UUID, payload: TranslationUpdate
     ) -> Translation:
         translation = await self.repository.get_or_raise(translation_id)
+        before = translation.value
+
         updated = await self.repository.update(translation, value=payload.value)
+
+        await self.activity.record(
+            ActivityAction.UPDATE,
+            entity=updated,
+            description=(
+                f"Changed the {updated.language} translation of '{updated.key}'"
+            ),
+            old_values={"value": before},
+            new_values={"value": updated.value},
+        )
         await self.session.commit()
         return updated
 
     async def delete(self, translation_id: uuid.UUID) -> None:
         translation = await self.repository.get_or_raise(translation_id)
+        before = snapshot(translation)
+
         await self.repository.delete(translation)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity_type="Translation",
+            entity_id=translation_id,
+            description=(
+                f"Removed the {translation.language} translation of "
+                f"'{translation.key}'"
+            ),
+            old_values=before,
+        )
         await self.session.commit()
 
     async def import_translations(
@@ -163,6 +204,17 @@ class TranslationService:
     ) -> int:
         """Bulk upsert, so re-importing a locale file updates changed strings."""
         imported = await self.repository.upsert_many(language, translations)
+
+        await self.activity.record(
+            ActivityAction.IMPORT,
+            entity_type="Translation",
+            entity_id=language.value,
+            description=(f"Imported {imported} {language.value} translation(s)"),
+            # The strings themselves are not recorded: a locale file is
+            # thousands of them, and the audit question is who reloaded the
+            # bundle, not what every line of it said.
+            new_values={"language": language.value, "imported": imported},
+        )
         await self.session.commit()
 
         logger.info("Imported %d %s translations", imported, language.value)

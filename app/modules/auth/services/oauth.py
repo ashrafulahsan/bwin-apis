@@ -178,6 +178,11 @@ class OAuthService:
         profile = await client.resolve(code)
 
         payload = self._to_social_login(profile)
+
+        # The sign-in itself is recorded by `social_login`, as `google_login`
+        # or `facebook_login`. Nothing is logged here on purpose: this method
+        # is one step of that action, and a second entry would report one
+        # sign-in twice.
         result, created = await self.auth.social_login(payload, context)
 
         logger.info(

@@ -14,6 +14,10 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.core.security import hash_password, verify_password
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.roles.constants import SystemRole
 from app.modules.roles.repositories.role import RoleRepository
 from app.modules.users.constants import SOCIAL_PROVIDERS, UserStatus
@@ -29,6 +33,11 @@ from app.modules.users.schemas.user import (
 )
 from app.shared.repositories.filters import Filter
 from app.shared.schemas.pagination import SupportsPagination
+from app.shared.services.activity_log_service import (
+    ActivityLogService,
+    diff,
+    snapshot,
+)
 from app.shared.utils.dates import utc_now
 
 logger = logging.getLogger(__name__)
@@ -40,6 +49,7 @@ class UserService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repository = UserRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.USERS)
         self.roles = RoleRepository(session)
 
     # -- Reads ----------------------------------------------------------
@@ -109,6 +119,15 @@ class UserService:
         role_ids = payload.role_ids or [await self._default_role_id()]
         await self._assign_validated_roles(user.id, role_ids)
 
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=user,
+            description=f"Created user {user.email or user.phone}",
+            # `snapshot` drops `password_hash` on the way past: the field name
+            # matches a sensitive fragment, so it is replaced rather than
+            # stored, here and everywhere else a user is logged.
+            new_values=snapshot(user),
+        )
         await self.session.commit()
         await self.session.refresh(user)
 
@@ -141,7 +160,22 @@ class UserService:
         if "status" in changes and changes["status"] is not None:
             changes["status"] = changes["status"].value
 
+        before = snapshot(user, fields=changes.keys())
         updated = await self.repository.update(user, **changes)
+        old_values, new_values = diff(before, snapshot(updated, fields=changes.keys()))
+
+        if old_values or new_values:
+            await self.activity.record(
+                ActivityAction.UPDATE,
+                entity=updated,
+                description=(
+                    f"Updated {', '.join(sorted(new_values))} "
+                    f"on user {updated.email or updated.phone}"
+                ),
+                old_values=old_values,
+                new_values=new_values,
+            )
+
         await self.session.commit()
         return updated
 
@@ -160,8 +194,21 @@ class UserService:
             if not verify_password(payload.current_password, user.password_hash):
                 raise ForbiddenException("The current password is incorrect.")
 
+        # Read before the write: `update` mutates this same instance, so
+        # afterwards there is no "before" left to record.
+        had_password = user.has_password
+
         updated = await self.repository.update(
             user, password_hash=hash_password(payload.new_password)
+        )
+
+        await self.activity.record(
+            ActivityAction.PASSWORD_CHANGE,
+            entity=updated,
+            description=f"Set a new password for {updated.full_name}",
+            # Deliberately no values: that the password changed is the fact
+            # worth keeping, and neither side of it may be written down.
+            new_values={"had_password_before": had_password},
         )
         await self.session.commit()
 
@@ -170,18 +217,40 @@ class UserService:
 
     async def delete(self, user_id: uuid.UUID) -> None:
         user = await self.repository.get_or_raise(user_id)
+        before = snapshot(user)
         await self.repository.soft_delete(user)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity=user,
+            description=f"Deleted user {user.email or user.phone}",
+            old_values=before,
+        )
         await self.session.commit()
 
     async def restore(self, user_id: uuid.UUID) -> User:
         user = await self.repository.get_or_raise(user_id, include_deleted=True)
         restored = await self.repository.restore(user)
+
+        await self.activity.record(
+            ActivityAction.RESTORE,
+            entity=restored,
+            description=f"Restored user {restored.email or restored.phone}",
+            new_values=snapshot(restored),
+        )
         await self.session.commit()
         return restored
 
     async def record_login(self, user_id: uuid.UUID) -> User:
         user = await self.repository.get_or_raise(user_id)
         updated = await self.repository.update(user, last_login_at=utc_now())
+
+        await self.activity.record(
+            ActivityAction.LOGIN,
+            entity=updated,
+            description=f"Recorded a sign-in for {updated.full_name}",
+            actor=updated,
+        )
         await self.session.commit()
         return updated
 
@@ -193,6 +262,7 @@ class UserService:
 
     async def _mark_verified(self, user_id: uuid.UUID, field: str) -> User:
         user = await self.repository.get_or_raise(user_id)
+        previous_status = user.status
         changes: dict[str, object] = {field: utc_now()}
 
         # A verified contact means the account is no longer merely pending.
@@ -200,6 +270,17 @@ class UserService:
             changes["status"] = UserStatus.ACTIVE.value
 
         updated = await self.repository.update(user, **changes)
+
+        await self.activity.record(
+            ActivityAction.VERIFY,
+            entity=updated,
+            description=(
+                f"Verified the {field.removesuffix('_verified_at')} of "
+                f"{updated.full_name}"
+            ),
+            old_values={"status": previous_status},
+            new_values={"status": updated.status, "verified": field},
+        )
         await self.session.commit()
         return updated
 
@@ -207,31 +288,73 @@ class UserService:
 
     async def assign_roles(self, user_id: uuid.UUID, role_ids: list[uuid.UUID]) -> User:
         user = await self.repository.get_or_raise(user_id)
-        await self._assign_validated_roles(user.id, role_ids)
+        held = sorted(user.role_slugs)
 
+        await self._assign_validated_roles(user.id, role_ids)
         await self.session.commit()
         await self.session.refresh(user)
+
+        await self._record_role_change(
+            ActivityAction.ROLE_ASSIGN, user, held, "Granted"
+        )
         return user
 
     async def revoke_roles(self, user_id: uuid.UUID, role_ids: list[uuid.UUID]) -> User:
         user = await self.repository.get_or_raise(user_id)
-        await self.repository.revoke_roles(user.id, role_ids)
+        held = sorted(user.role_slugs)
 
+        await self.repository.revoke_roles(user.id, role_ids)
         await self.session.commit()
         await self.session.refresh(user)
+
+        await self._record_role_change(
+            ActivityAction.ROLE_REVOKE, user, held, "Revoked"
+        )
         return user
 
     async def replace_roles(
         self, user_id: uuid.UUID, role_ids: list[uuid.UUID]
     ) -> User:
         user = await self.repository.get_or_raise(user_id)
+        held = sorted(user.role_slugs)
 
         await self.repository.revoke_all_roles(user.id)
         await self._assign_validated_roles(user.id, role_ids)
-
         await self.session.commit()
         await self.session.refresh(user)
+
+        await self._record_role_change(
+            ActivityAction.ROLE_ASSIGN, user, held, "Replaced the roles of"
+        )
         return user
+
+    async def _record_role_change(
+        self, action: ActivityAction, user: User, held: list[str], verb: str
+    ) -> None:
+        """Record what an account may now do, and what it could before.
+
+        Written after the commit and refresh rather than before, because the
+        entry has to name the roles the account ended up with - and that is
+        only known once the association rows have been written and reloaded.
+        A change in authority is the entry an auditor looks for first, so it
+        records the whole set on both sides rather than the delta.
+        """
+        now_held = sorted(user.role_slugs)
+
+        if now_held == held:
+            return
+
+        await self.activity.record(
+            action,
+            entity=user,
+            description=(
+                f"{verb} roles on {user.email or user.phone}: "
+                f"{', '.join(now_held) or 'none'}"
+            ),
+            old_values={"roles": held},
+            new_values={"roles": now_held},
+        )
+        await self.session.commit()
 
     async def _assign_validated_roles(
         self, user_id: uuid.UUID, role_ids: list[uuid.UUID]
@@ -283,6 +406,19 @@ class UserService:
             payload.provider_user_id,
             payload.email,
         )
+
+        await self.activity.record(
+            ActivityAction.ACCOUNT_LINK,
+            entity=user,
+            description=(
+                f"Linked a {payload.provider.value} account to "
+                f"{user.email or user.phone}"
+            ),
+            new_values={
+                "provider": payload.provider.value,
+                "provider_email": payload.email,
+            },
+        )
         await self.session.commit()
 
         # The session keeps objects alive across commits (expire_on_commit is
@@ -307,6 +443,15 @@ class UserService:
             )
 
         await self.repository.remove_identity(user.id, provider)
+
+        await self.activity.record(
+            ActivityAction.ACCOUNT_UNLINK,
+            entity=user,
+            description=(
+                f"Unlinked the {provider} account from {user.email or user.phone}"
+            ),
+            old_values={"provider": provider},
+        )
         await self.session.commit()
         await self.session.refresh(user, attribute_names=["identities"])
 
@@ -349,6 +494,20 @@ class UserService:
                     payload.provider_user_id,
                     payload.email,
                 )
+
+                await self.activity.record(
+                    ActivityAction.ACCOUNT_LINK,
+                    entity=by_email,
+                    description=(
+                        f"Linked a {payload.provider.value} account to "
+                        f"{by_email.email} on a verified address match"
+                    ),
+                    actor=by_email,
+                    new_values={
+                        "provider": payload.provider.value,
+                        "matched_on": "verified_email",
+                    },
+                )
                 await self.session.commit()
                 await self.session.refresh(by_email)
                 return by_email, False
@@ -376,6 +535,18 @@ class UserService:
         )
         await self._assign_validated_roles(user.id, [await self._default_role_id()])
 
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=user,
+            description=(
+                f"Created user {user.email} from a {payload.provider.value} sign-in"
+            ),
+            # The account creating itself: nobody was signed in when this
+            # request arrived, so the new account is named as the actor
+            # rather than leaving the entry anonymous.
+            actor=user,
+            new_values=snapshot(user) | {"provider": payload.provider.value},
+        )
         await self.session.commit()
         await self.session.refresh(user)
 

@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import SortOrder
 from app.core.exceptions import ConflictException, NotFoundException
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.categories.constants import CategoryStatus
 from app.modules.categories.models.category_type import CategoryType
 from app.modules.categories.repositories.category_type import CategoryTypeRepository
@@ -16,6 +20,11 @@ from app.modules.categories.schemas.category import (
 )
 from app.shared.repositories.filters import Filter
 from app.shared.schemas.pagination import SupportsPagination
+from app.shared.services.activity_log_service import (
+    ActivityLogService,
+    diff,
+    snapshot,
+)
 from app.shared.utils.slug import generate_unique_slug
 
 logger = logging.getLogger(__name__)
@@ -30,6 +39,7 @@ class CategoryTypeService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repository = CategoryTypeRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.CATEGORIES)
 
     # -- Reads ----------------------------------------------------------
 
@@ -94,6 +104,13 @@ class CategoryTypeService:
             created_by=actor_id,
             updated_by=actor_id,
         )
+
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=created,
+            description=f"Created category type {created.name}",
+            new_values=snapshot(created),
+        )
         await self.session.commit()
 
         logger.info("Created category type %s (%s)", created.name, created.slug)
@@ -130,7 +147,19 @@ class CategoryTypeService:
         # already in URLs and in whatever has linked to them.
         changes["updated_by"] = actor_id
 
+        before = snapshot(category_type, fields=changes.keys())
         updated = await self.repository.update(category_type, **changes)
+        old_values, new_values = diff(before, snapshot(updated, fields=changes.keys()))
+
+        if old_values or new_values:
+            await self.activity.record(
+                ActivityAction.UPDATE,
+                entity=updated,
+                description=f"Updated category type {updated.name}",
+                old_values=old_values,
+                new_values=new_values,
+            )
+
         await self.session.commit()
         return updated
 
@@ -151,7 +180,15 @@ class CategoryTypeService:
                 "Delete or move them first."
             )
 
+        before = snapshot(category_type)
         await self.repository.soft_delete(category_type)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity=category_type,
+            description=f"Deleted category type {category_type.name}",
+            old_values=before,
+        )
         await self.session.commit()
 
         logger.info("Deleted category type %s", category_type.slug)
@@ -161,5 +198,12 @@ class CategoryTypeService:
             type_id, include_deleted=True
         )
         restored = await self.repository.restore(category_type)
+
+        await self.activity.record(
+            ActivityAction.RESTORE,
+            entity=restored,
+            description=f"Restored category type {restored.name}",
+            new_values=snapshot(restored),
+        )
         await self.session.commit()
         return restored

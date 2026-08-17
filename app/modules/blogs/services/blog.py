@@ -25,6 +25,10 @@ from app.core.exceptions import (
     ConflictException,
     NotFoundException,
 )
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.blogs.constants import (
     BLOG_CATEGORY_TYPE_SLUG,
     BLOG_TAG_TYPE_SLUG,
@@ -41,10 +45,15 @@ from app.modules.categories.repositories.category import CategoryRepository
 from app.modules.categories.repositories.category_type import CategoryTypeRepository
 from app.modules.users.models.user import User
 from app.modules.users.repositories.user import UserRepository
+from app.shared.models.seo import DEFAULT_META_ROBOTS
 from app.shared.repositories.filters import Filter
 from app.shared.schemas.pagination import SupportsPagination
-from app.shared.models.seo import DEFAULT_META_ROBOTS
 from app.shared.schemas.seo import SEO_FIELDS
+from app.shared.services.activity_log_service import (
+    ActivityLogService,
+    diff,
+    snapshot,
+)
 from app.shared.utils.dates import utc_now
 from app.shared.utils.slug import generate_unique_slug, slugify
 
@@ -76,6 +85,7 @@ class BlogService:
         self.categories = CategoryRepository(session)
         self.types = CategoryTypeRepository(session)
         self.users = UserRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.BLOGS)
 
     # -- Reads ----------------------------------------------------------
 
@@ -179,6 +189,14 @@ class BlogService:
             updated_by=actor_id,
             **self._seo_values(payload),
         )
+
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=created,
+            description=f"Created blog post {created.title!r}",
+            new_values=snapshot(created, exclude=["content"])
+            | {"tags": [tag.name for tag in tags], "category": category.name},
+        )
         await self.session.commit()
 
         logger.info("Created blog post %s (%s)", created.title, created.slug)
@@ -229,7 +247,31 @@ class BlogService:
 
         changes["updated_by"] = actor_id
 
+        # `content` is excluded from both sides: a post body is thousands of
+        # words, and an audit trail holding two copies of it per edit is one
+        # nobody can read and a table nobody can afford. That the content
+        # changed is recorded; the wording itself lives in the post.
+        before = snapshot(blog, fields=changes.keys(), exclude=["content"])
         updated = await self.repository.update(blog, **changes)
+        old_values, new_values = diff(
+            before, snapshot(updated, fields=changes.keys(), exclude=["content"])
+        )
+
+        if "content" in changes:
+            new_values["content"] = f"{len(updated.content)} characters"
+
+        if payload.tag_ids is not None:
+            new_values["tags"] = [tag.name for tag in updated.tags]
+
+        if old_values or new_values:
+            await self.activity.record(
+                ActivityAction.UPDATE,
+                entity=updated,
+                description=f"Updated blog post {updated.title!r}",
+                old_values=old_values,
+                new_values=new_values,
+            )
+
         await self.session.commit()
 
         return updated
@@ -254,11 +296,27 @@ class BlogService:
 
         moment = published_at or blog.published_at or utc_now()
 
+        previous_status = blog.status
         updated = await self.repository.update(
             blog,
             status=BlogStatus.PUBLISHED.value,
             published_at=moment,
             updated_by=actor_id,
+        )
+
+        await self.activity.record(
+            ActivityAction.PUBLISH,
+            entity=updated,
+            description=(
+                f"{'Scheduled' if updated.is_scheduled else 'Published'} "
+                f"blog post {updated.title!r}"
+            ),
+            old_values={"status": previous_status},
+            new_values={
+                "status": updated.status,
+                "published_at": moment.isoformat(),
+                "scheduled": updated.is_scheduled,
+            },
         )
         await self.session.commit()
 
@@ -278,8 +336,17 @@ class BlogService:
         if blog.status == BlogStatus.DRAFT:
             raise ConflictException(f"'{blog.title}' is already a draft.")
 
+        previous_status = blog.status
         updated = await self.repository.update(
             blog, status=BlogStatus.DRAFT.value, updated_by=actor_id
+        )
+
+        await self.activity.record(
+            ActivityAction.UNPUBLISH,
+            entity=updated,
+            description=f"Pulled blog post {updated.title!r} back to draft",
+            old_values={"status": previous_status},
+            new_values={"status": updated.status},
         )
         await self.session.commit()
 
@@ -295,8 +362,17 @@ class BlogService:
         if blog.status == BlogStatus.ARCHIVED:
             raise ConflictException(f"'{blog.title}' is already archived.")
 
+        previous_status = blog.status
         updated = await self.repository.update(
             blog, status=BlogStatus.ARCHIVED.value, updated_by=actor_id
+        )
+
+        await self.activity.record(
+            ActivityAction.ARCHIVE,
+            entity=updated,
+            description=f"Archived blog post {updated.title!r}",
+            old_values={"status": previous_status},
+            new_values={"status": updated.status},
         )
         await self.session.commit()
 
@@ -307,7 +383,15 @@ class BlogService:
         """Soft delete, so the row survives for audit and restore."""
         blog = await self.repository.get_or_raise(blog_id)
 
+        before = snapshot(blog, exclude=["content"])
         await self.repository.soft_delete(blog)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity=blog,
+            description=f"Deleted blog post {blog.title!r}",
+            old_values=before,
+        )
         await self.session.commit()
 
         logger.info("Deleted blog post %s", blog.slug)
@@ -315,6 +399,13 @@ class BlogService:
     async def restore(self, blog_id: uuid.UUID) -> Blog:
         blog = await self.repository.get_or_raise(blog_id, include_deleted=True)
         restored = await self.repository.restore(blog)
+
+        await self.activity.record(
+            ActivityAction.RESTORE,
+            entity=restored,
+            description=f"Restored blog post {restored.title!r}",
+            new_values=snapshot(restored, exclude=["content"]),
+        )
         await self.session.commit()
         return restored
 

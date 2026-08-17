@@ -21,6 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException
 from app.core.security import hash_password, token_fingerprint
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.auth.constants import (
     PASSWORD_RESET_COOLDOWN,
     PASSWORD_RESET_MAX_PER_HOUR,
@@ -50,6 +54,7 @@ from app.modules.users.models.user import User
 from app.modules.users.repositories.user import UserRepository
 from app.modules.users.schemas.user import PasswordSet
 from app.modules.users.services.user import UserService
+from app.shared.services.activity_log_service import ActivityLogService
 from app.shared.utils.dates import truncate_to_second, utc_now
 
 logger = logging.getLogger(__name__)
@@ -69,6 +74,7 @@ class PasswordResetService:
         self.tokens = PasswordResetRepository(session)
         self.sessions = RefreshTokenRepository(session)
         self.settings = SettingService(session)
+        self.activity = ActivityLogService(session, ActivityModule.AUTH)
         self.sender = sender or default_sender
 
     # -- Requesting -----------------------------------------------------
@@ -108,6 +114,16 @@ class PasswordResetService:
 
         token = await self._issue(user, via=via, context=context)
         link = await self._build_link(token)
+
+        # `_issue` has already committed, so this entry commits on its own.
+        await self.activity.record(
+            ActivityAction.PASSWORD_RESET_REQUEST,
+            entity=user,
+            description=f"Password reset link sent to {user.full_name} by {via}",
+            actor=user,
+            new_values={"requested_via": via},
+        )
+        await self.session.commit()
 
         await self.sender.send(user, link, via=via)
         logger.info("Password reset link issued for user %s via %s", user.id, via)
@@ -287,6 +303,20 @@ class PasswordResetService:
         )
 
         await self._mark_contact_verified(user, stored)
+
+        await self.activity.record(
+            ActivityAction.PASSWORD_RESET,
+            entity=user,
+            description=(
+                f"Password reset for {user.full_name} from a link; "
+                f"{ended} session(s) ended"
+            ),
+            actor=user,
+            # No password value on either side of this, ever. The service
+            # redacts anything named like one, and there is nothing here
+            # worth recording beyond the fact and its blast radius.
+            new_values={"sessions_ended": ended, "requested_via": stored.requested_via},
+        )
         await self.session.commit()
 
         logger.info("Password reset for user %s, %d sessions ended", user.id, ended)
@@ -356,12 +386,30 @@ class PasswordResetService:
         if not sign_out_other_sessions:
             # Asked to leave the other sessions alone, so the old tokens stay
             # valid and there is nothing to replace.
+            await self.activity.record(
+                ActivityAction.PASSWORD_CHANGE,
+                entity=user,
+                description=f"{user.full_name} changed their password",
+                actor=user,
+                new_values={"sessions_ended": 0},
+            )
+            await self.session.commit()
             return 0, None
 
         ended = await self.sessions.revoke_all_for_user(
             user.id, RevocationReason.PASSWORD_CHANGED
         )
         await self.users.update(user, tokens_valid_from=truncate_to_second(utc_now()))
+
+        await self.activity.record(
+            ActivityAction.PASSWORD_CHANGE,
+            entity=user,
+            description=(
+                f"{user.full_name} changed their password; {ended} session(s) ended"
+            ),
+            actor=user,
+            new_values={"sessions_ended": ended},
+        )
         await self.session.commit()
 
         replacement = await AuthService(self.session).issue_session(user, context)
@@ -374,5 +422,17 @@ class PasswordResetService:
     async def purge_expired(self, *, older_than: timedelta | None = None) -> int:
         """Drop links old enough that they answer no useful question."""
         removed = await self.tokens.purge_expired(older_than=older_than)
+
+        if removed:
+            # Only when something was actually removed: a maintenance job
+            # that runs hourly and finds nothing should not write an entry an
+            # hour, drowning the trail it is supposed to sit alongside.
+            await self.activity.record(
+                ActivityAction.DELETE,
+                entity_type="PasswordResetToken",
+                description=f"Purged {removed} expired password reset link(s)",
+                old_values={"removed": removed},
+            )
+
         await self.session.commit()
         return removed

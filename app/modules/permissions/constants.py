@@ -50,6 +50,7 @@ class PermissionResource(StrEnum):
     SETTING = "setting"
     REPORT = "report"
     NOTIFICATION = "notification"
+    ACTIVITY_LOG = "activity_log"
 
 
 ACTION_LABELS: dict[str, str] = {
@@ -81,6 +82,7 @@ RESOURCE_LABELS: dict[str, str] = {
     PermissionResource.SETTING: "settings",
     PermissionResource.REPORT: "reports",
     PermissionResource.NOTIFICATION: "notifications",
+    PermissionResource.ACTIVITY_LOG: "the activity log",
 }
 
 #: Which actions exist for each resource. Seeded by migration.
@@ -99,6 +101,11 @@ SYSTEM_PERMISSIONS: dict[str, list[str]] = {
     PermissionResource.SETTING: ["view", "update"],
     PermissionResource.REPORT: ["view", "export"],
     PermissionResource.NOTIFICATION: ["view", "send"],
+    # No create, update or delete: the platform writes these entries and
+    # nothing may edit or remove one, so the codes that would allow it are
+    # never defined. A permission that does not exist cannot be granted by
+    # mistake.
+    PermissionResource.ACTIVITY_LOG: ["view", "export"],
 }
 
 
@@ -155,6 +162,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("setting", "view", "update"),
         *_codes_for("report", "view", "export"),
         *_codes_for("notification", "view", "send"),
+        *_codes_for("activity_log", "view", "export"),
     ],
     "content-manager": [
         *_codes_for("page", "view", "create", "update", "delete", "publish"),
@@ -164,6 +172,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("translation", "view", "update"),
         *_codes_for("course", "view"),
         *_codes_for("report", "view"),
+        # Reads the trail but cannot take a copy of it out of the system.
+        *_codes_for("activity_log", "view"),
     ],
     # Editors write but never publish - that is the point of the role.
     "editor": [

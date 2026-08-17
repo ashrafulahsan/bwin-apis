@@ -58,6 +58,7 @@ bwin_apis/
 │   ├── core/           # Config, database, security, dependencies, exceptions
 │   ├── api/v1/         # Versioned route registration
 │   ├── modules/        # Feature modules (auth, users, roles, cms, lms, ...)
+│   │                   #   incl. activity_logs, the platform-wide audit trail
 │   ├── shared/         # Cross-module services, repositories, schemas, utils
 │   ├── jobs/           # Background jobs
 │   ├── storage/        # Uploads and exports
@@ -92,6 +93,14 @@ modules/<module>/
 - Dependency injection everywhere
 - `snake_case` naming, plural table names
 - REST standards, versioned under `/api/v1/`
+- **Every business action is written to the Activity Log, from the service
+  layer, through `ActivityLogService`** — see [Activity Log](#activity-log)
+
+**A feature is not complete until its business logic, its tests and its
+activity logging are all in place.** That applies to every module here today
+and to every module added later. It is not a convention: the test suite reads
+the source of every service and fails when one writes to the database without
+recording what it did.
 
 ## Database
 
@@ -847,6 +856,68 @@ Write endpoints (create, update, delete, import) are deliberately not exposed
 yet — they land with the roles module, since an unauthenticated write endpoint
 would let anyone rewrite the interface. The service methods already exist.
 
+## Activity Log
+
+Every create, update, delete, sign-in, sign-out, password reset, social
+sign-in, role change, permission change, settings change, publication and
+enrolment is recorded — successes and refusals alike. Full guide:
+[docs/activity\_log.md](docs/activity_log.md).
+
+```
+GET /api/v1/activity-logs?module=blogs&action=delete&status=failure
+GET /api/v1/activity-logs/history/Blog/{id}
+GET /api/v1/activity-logs/{entry_id}
+```
+
+Each entry captures who (`user_id`, `user_name`, `role_name`), what (`action`,
+`module`, `entity_type`, `entity_id`, `description`), the change
+(`old_values`, `new_values`, both JSONB), where from (`ip_address`,
+`user_agent`, `request_method`, `request_url`), and how it ended (`status`,
+`created_at`).
+
+### Writing one
+
+Bind the service to your module once, then record next to the change, before
+the commit:
+
+```python
+self.activity = ActivityLogService(session, ActivityModule.LMS)
+
+await self.activity.record(
+    ActivityAction.CREATE,
+    entity=course,
+    description=f"Created course {course.title!r}",
+    new_values=snapshot(course),
+)
+await self.session.commit()
+```
+
+### Five decisions worth knowing
+
+- **One writer.** `app/shared/services/activity_log_service.py` is the only
+  thing that constructs an entry, so the trail has one vocabulary.
+- **Service layer only.** A router knows the request but not what the
+  operation meant, and logging there leaves every other caller unlogged.
+- **The entry and the change commit together.** An entry that survives a
+  rolled-back transaction describes something that never happened.
+  `record_detached` is the deliberate exception, for refusals that are about
+  to raise.
+- **Only the diff is stored**, so an edit to one field does not record forty
+  unchanged ones.
+- **Secrets never reach the trail.** Anything named like a password, token or
+  key is redacted, as is any setting marked `is_secret`.
+
+The table is append-only: no `updated_at`, no `deleted_at`, and no
+`activity_log.create`, `.update` or `.delete` permission exists to be granted
+by mistake. `activity_log.view` goes to Super Admin, Admin and Content
+Manager; `activity_log.export` to Super Admin and Admin.
+
+> **Known gap.** The `roles`, `users`, `permissions`, `settings` and
+> `translations` routers do not yet require authentication. Their actions are
+> logged in full, but with no caller attached, because nothing established who
+> the caller was. Adding the guards those modules already define fills those
+> columns in with no change to the logging.
+
 ## Repository Layer
 
 Every module's repository subclasses `BaseRepository`, so routine CRUD is
@@ -1029,8 +1100,8 @@ there, dependency warnings included.
 
 | Account                            | Role(s)                      | Notes                    |
 | ---------------------------------- | ---------------------------- | ------------------------ |
-| `superadmin@bwin.example.com`      | Super Admin                  | all 50 permissions       |
-| `admin@bwin.example.com`           | Admin                        | 47 permissions           |
+| `superadmin@bwin.example.com`      | Super Admin                  | all 57 permissions       |
+| `admin@bwin.example.com`           | Admin                        | 54 permissions           |
 | `content@bwin.example.com`         | Content Manager              | Bengali interface        |
 | `editor@bwin.example.com`          | Editor                       | cannot publish           |
 | `instructor@bwin.example.com`      | Instructor                   |                          |

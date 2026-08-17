@@ -18,6 +18,10 @@ from app.core.exceptions import (
     ConflictException,
     NotFoundException,
 )
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.categories.constants import (
     MAX_CATEGORY_DEPTH,
     CategoryStatus,
@@ -32,6 +36,12 @@ from app.modules.categories.schemas.category import (
 )
 from app.shared.repositories.filters import Filter
 from app.shared.schemas.pagination import SupportsPagination
+from app.shared.services.activity_log_service import (
+    ActivityLogService,
+    diff,
+    jsonable,
+    snapshot,
+)
 from app.shared.utils.slug import generate_unique_slug
 
 logger = logging.getLogger(__name__)
@@ -44,6 +54,7 @@ class CategoryService:
         self.session = session
         self.repository = CategoryRepository(session)
         self.types = CategoryTypeRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.CATEGORIES)
 
     # -- Reads ----------------------------------------------------------
 
@@ -170,6 +181,13 @@ class CategoryService:
             created_by=actor_id,
             updated_by=actor_id,
         )
+
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=created,
+            description=f"Created category {created.name} in {category_type.name}",
+            new_values=snapshot(created),
+        )
         await self.session.commit()
 
         # `selectin` loads a relationship when the row is *queried*, and this
@@ -214,7 +232,19 @@ class CategoryService:
 
         changes["updated_by"] = actor_id
 
+        before = snapshot(category, fields=changes.keys())
         updated = await self.repository.update(category, **changes)
+        old_values, new_values = diff(before, snapshot(updated, fields=changes.keys()))
+
+        if old_values or new_values:
+            await self.activity.record(
+                ActivityAction.UPDATE,
+                entity=updated,
+                description=f"Updated category {updated.name}",
+                old_values=old_values,
+                new_values=new_values,
+            )
+
         await self.session.commit()
         return updated
 
@@ -230,8 +260,20 @@ class CategoryService:
 
         await self._guard_parent(category, parent_id, category.category_type_id)
 
+        previous_parent = category.parent_category_id
         updated = await self.repository.update(
             category, parent_category_id=parent_id, updated_by=actor_id
+        )
+
+        await self.activity.record(
+            ActivityAction.UPDATE,
+            entity=updated,
+            description=(
+                f"Moved category {updated.name} "
+                f"{'under another category' if parent_id else 'to the top level'}"
+            ),
+            old_values={"parent_category_id": jsonable(previous_parent)},
+            new_values={"parent_category_id": jsonable(parent_id)},
         )
         await self.session.commit()
 
@@ -254,7 +296,15 @@ class CategoryService:
                 "Delete or move them first."
             )
 
+        before = snapshot(category)
         await self.repository.soft_delete(category)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity=category,
+            description=f"Deleted category {category.name}",
+            old_values=before,
+        )
         await self.session.commit()
 
         logger.info("Deleted category %s", category.slug)
@@ -262,6 +312,13 @@ class CategoryService:
     async def restore(self, category_id: uuid.UUID) -> Category:
         category = await self.repository.get_or_raise(category_id, include_deleted=True)
         restored = await self.repository.restore(category)
+
+        await self.activity.record(
+            ActivityAction.RESTORE,
+            entity=restored,
+            description=f"Restored category {restored.name}",
+            new_values=snapshot(restored),
+        )
         await self.session.commit()
         return restored
 

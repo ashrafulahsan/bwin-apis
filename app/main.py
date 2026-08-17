@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.context import RequestContextMiddleware
 from app.core.database import dispose_engine
 from app.core.exceptions import register_exception_handlers
 from app.core.i18n import LanguageMiddleware
@@ -38,9 +39,13 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware added last sits outermost, so CORS goes after the language
-    # middleware and gets to answer preflight requests first.
+    # Middleware added last sits outermost, so CORS goes after the others and
+    # gets to answer preflight requests first. The request context is added
+    # after the language middleware and so wraps it: every log entry written
+    # anywhere inside a request needs it, including one written while
+    # resolving the language.
     application.add_middleware(LanguageMiddleware)
+    application.add_middleware(RequestContextMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

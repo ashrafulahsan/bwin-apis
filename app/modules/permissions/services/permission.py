@@ -11,6 +11,10 @@ from app.core.exceptions import (
     ConflictException,
     ForbiddenException,
 )
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.permissions.constants import (
     ALL_PERMISSIONS,
     DEFAULT_ROLE_PERMISSIONS,
@@ -25,9 +29,15 @@ from app.modules.permissions.schemas.permission import (
     PermissionCreate,
     PermissionUpdate,
 )
+from app.modules.roles.models.role import Role
 from app.modules.roles.repositories.role import RoleRepository
 from app.shared.repositories.filters import Filter
 from app.shared.schemas.pagination import SupportsPagination
+from app.shared.services.activity_log_service import (
+    ActivityLogService,
+    diff,
+    snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +49,7 @@ class PermissionService:
         self.session = session
         self.repository = PermissionRepository(session)
         self.roles = RoleRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.PERMISSIONS)
 
     # -- Reads ----------------------------------------------------------
 
@@ -105,6 +116,13 @@ class PermissionService:
             description=payload.description,
             is_system=False,
         )
+
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=permission,
+            description=f"Created permission {permission.code}",
+            new_values=snapshot(permission),
+        )
         await self.session.commit()
         return permission
 
@@ -117,7 +135,19 @@ class PermissionService:
         if not changes:
             return permission
 
+        before = snapshot(permission, fields=changes.keys())
         updated = await self.repository.update(permission, **changes)
+        old_values, new_values = diff(before, snapshot(updated, fields=changes.keys()))
+
+        if old_values or new_values:
+            await self.activity.record(
+                ActivityAction.UPDATE,
+                entity=updated,
+                description=f"Updated permission {updated.code}",
+                old_values=old_values,
+                new_values=new_values,
+            )
+
         await self.session.commit()
         return updated
 
@@ -142,7 +172,16 @@ class PermissionService:
                 "Revoke it from them first."
             )
 
+        before = snapshot(permission)
         await self.repository.delete(permission)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity_type="Permission",
+            entity_id=before.get("code"),
+            description=f"Deleted permission {permission.code}",
+            old_values=before,
+        )
         await self.session.commit()
 
     # -- Role grants ----------------------------------------------------
@@ -160,7 +199,15 @@ class PermissionService:
         role = await self.roles.get_or_raise(role_id)
         permissions = await self._resolve(codes)
 
+        held = await self._codes_held(role.id)
         await self.repository.grant(role.id, [p.id for p in permissions])
+
+        await self._record_grant_change(
+            ActivityAction.PERMISSION_GRANT,
+            role,
+            held,
+            f"Granted {len(permissions)} permission(s) to {role.name}",
+        )
         await self.session.commit()
 
         logger.info("Granted %d permissions to %s", len(permissions), role.slug)
@@ -170,7 +217,15 @@ class PermissionService:
         role = await self.roles.get_or_raise(role_id)
         permissions = await self._resolve(codes)
 
+        held = await self._codes_held(role.id)
         await self.repository.revoke(role.id, [p.id for p in permissions])
+
+        await self._record_grant_change(
+            ActivityAction.PERMISSION_REVOKE,
+            role,
+            held,
+            f"Revoked {len(permissions)} permission(s) from {role.name}",
+        )
         await self.session.commit()
 
         return await self.repository.permissions_for_role(role.id)
@@ -184,12 +239,50 @@ class PermissionService:
         role = await self.roles.get_or_raise(role_id)
         permissions = await self._resolve(codes)
 
+        held = await self._codes_held(role.id)
+
         await self.repository.revoke_all(role.id)
         await self.repository.grant(role.id, [p.id for p in permissions])
+
+        await self._record_grant_change(
+            ActivityAction.PERMISSION_GRANT,
+            role,
+            held,
+            f"Replaced the permissions of {role.name} with {len(permissions)}",
+        )
         await self.session.commit()
 
         logger.info("Replaced permissions for %s with %d", role.slug, len(permissions))
         return await self.repository.permissions_for_role(role.id)
+
+    async def _codes_held(self, role_id: uuid.UUID) -> list[str]:
+        return sorted(
+            permission.code
+            for permission in await self.repository.permissions_for_role(role_id)
+        )
+
+    async def _record_grant_change(
+        self, action: ActivityAction, role: Role, held: list[str], description: str
+    ) -> None:
+        """Record a change in what a role may do, as the whole set either side.
+
+        The delta alone would not answer the question these entries exist for
+        - "what could this role do on the day it happened" - and a role's
+        permission set is small enough to write down in full.
+        """
+        now_held = await self._codes_held(role.id)
+
+        if now_held == held:
+            return
+
+        await self.activity.record(
+            action,
+            entity=role,
+            description=description,
+            entity_type="Role",
+            old_values={"permissions": held},
+            new_values={"permissions": now_held},
+        )
 
     async def _resolve(self, codes: list[str]) -> list[Permission]:
         """Look up permissions by code, rejecting any that do not exist.
@@ -229,6 +322,13 @@ class PermissionService:
                 created += 1
 
         if created:
+            await self.activity.record(
+                ActivityAction.CREATE,
+                entity_type="Permission",
+                description=f"Seeded {created} system permission(s)",
+                new_values={"created": created},
+                module=ActivityModule.SYSTEM,
+            )
             await self.session.commit()
             logger.info("Seeded %d system permissions", created)
 
@@ -260,6 +360,16 @@ class PermissionService:
             applied[slug] = len(resolved)
 
         if applied:
+            await self.activity.record(
+                ActivityAction.PERMISSION_GRANT,
+                entity_type="Role",
+                description=(
+                    "Seeded the default permissions of "
+                    f"{len(applied)} role(s): {', '.join(sorted(applied))}"
+                ),
+                new_values={"granted": applied},
+                module=ActivityModule.SYSTEM,
+            )
             await self.session.commit()
 
         return applied

@@ -10,6 +10,10 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.settings.constants import (
     SYSTEM_SETTINGS,
     SettingKey,
@@ -18,6 +22,12 @@ from app.modules.settings.constants import (
 from app.modules.settings.models.setting import Setting
 from app.modules.settings.repositories.setting import SettingRepository
 from app.modules.settings.schemas.setting import SettingCreate
+from app.shared.services.activity_log_service import (
+    REDACTED,
+    ActivityLogService,
+    is_sensitive,
+    snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +44,7 @@ class SettingService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repository = SettingRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.SETTINGS)
         self._cache: dict[str, Setting] = {}
 
     # -- Reads ----------------------------------------------------------
@@ -96,7 +107,18 @@ class SettingService:
     async def set(self, key: str, value: str | None) -> Setting:
         """Change one setting's value."""
         setting = await self.get(key)
+        before = self._loggable(setting)
+
         updated = await self.repository.update(setting, value=value)
+
+        await self.activity.record(
+            ActivityAction.SETTINGS_CHANGE,
+            entity_type="Setting",
+            entity_id=updated.key,
+            description=f"Changed setting {updated.key}",
+            old_values=before,
+            new_values=self._loggable(updated),
+        )
         await self.session.commit()
 
         self._cache[key] = updated
@@ -117,6 +139,8 @@ class SettingService:
         if unknown:
             raise NotFoundException(message=f"Unknown settings: {', '.join(unknown)}.")
 
+        before = {key: self._loggable(found[key])["value"] for key in values}
+
         updated = []
         for key, value in values.items():
             setting = found[key]
@@ -132,6 +156,19 @@ class SettingService:
         for setting in updated:
             await self.session.refresh(setting)
 
+        await self.activity.record(
+            ActivityAction.SETTINGS_CHANGE,
+            entity_type="Setting",
+            # A form save is one action over several rows, so it is one entry
+            # naming them all rather than a row each - which is how it will
+            # be read back.
+            entity_id=None,
+            description=f"Changed settings: {', '.join(sorted(values))}",
+            old_values=before,
+            new_values={
+                setting.key: self._loggable(setting)["value"] for setting in updated
+            },
+        )
         await self.session.commit()
 
         self._cache.update({setting.key: setting for setting in updated})
@@ -152,6 +189,14 @@ class SettingService:
             is_secret=payload.is_secret,
             is_system=False,
         )
+
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity_type="Setting",
+            entity_id=setting.key,
+            description=f"Created setting {setting.key}",
+            new_values=snapshot(setting, exclude=["value"]) | self._loggable(setting),
+        )
         await self.session.commit()
 
         logger.info("Created setting %s", setting.key)
@@ -171,11 +216,34 @@ class SettingService:
                 "Clear its value instead."
             )
 
+        before = snapshot(setting, exclude=["value"]) | self._loggable(setting)
         await self.repository.delete(setting)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity_type="Setting",
+            entity_id=key,
+            description=f"Deleted setting {key}",
+            old_values=before,
+        )
         await self.session.commit()
 
         self._cache.pop(key, None)
         logger.info("Deleted setting %s", key)
+
+    @staticmethod
+    def _loggable(setting: Setting) -> dict[str, str | None]:
+        """A setting's value as the audit trail may hold it.
+
+        Half of these rows are credentials, so the value is replaced whenever
+        the setting is marked secret or merely named like one - a key called
+        `google_client_secret` is redacted even if nobody remembered to tick
+        the box. What changed, and when, is still recorded either way.
+        """
+        if setting.is_secret or is_sensitive(setting.key):
+            return {"value": REDACTED if setting.value is not None else None}
+
+        return {"value": setting.value}
 
     # -- Seeding --------------------------------------------------------
 
@@ -204,6 +272,13 @@ class SettingService:
             created += 1
 
         if created:
+            await self.activity.record(
+                ActivityAction.CREATE,
+                entity_type="Setting",
+                description=f"Seeded {created} system setting(s)",
+                new_values={"created": created},
+                module=ActivityModule.SYSTEM,
+            )
             await self.session.commit()
             logger.info("Seeded %d system settings", created)
 

@@ -11,12 +11,21 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
+from app.modules.activity_logs.models.activity_log import (
+    ActivityAction,
+    ActivityModule,
+)
 from app.modules.roles.constants import SYSTEM_ROLES, SystemRole
 from app.modules.roles.models.role import Role
 from app.modules.roles.repositories.role import RoleRepository
 from app.modules.roles.schemas.role import RoleCreate, RoleUpdate
 from app.shared.repositories.filters import Filter
 from app.shared.schemas.pagination import SupportsPagination
+from app.shared.services.activity_log_service import (
+    ActivityLogService,
+    diff,
+    snapshot,
+)
 from app.shared.utils.slug import generate_unique_slug
 
 logger = logging.getLogger(__name__)
@@ -31,6 +40,7 @@ class RoleService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repository = RoleRepository(session)
+        self.activity = ActivityLogService(session, ActivityModule.ROLES)
 
     # -- Reads ----------------------------------------------------------
 
@@ -93,6 +103,13 @@ class RoleService:
             level=payload.level,
             is_system=False,
         )
+
+        await self.activity.record(
+            ActivityAction.CREATE,
+            entity=role,
+            description=f"Created role {role.name}",
+            new_values=snapshot(role),
+        )
         await self.session.commit()
 
         logger.info("Created role %s (%s)", role.name, role.slug)
@@ -119,7 +136,21 @@ class RoleService:
                 f"The level of the system role '{role.name}' cannot be changed."
             )
 
+        before = snapshot(role, fields=changes.keys())
         updated = await self.repository.update(role, **changes)
+        old_values, new_values = diff(before, snapshot(updated, fields=changes.keys()))
+
+        if old_values or new_values:
+            await self.activity.record(
+                ActivityAction.UPDATE,
+                entity=updated,
+                description=(
+                    f"Updated {', '.join(sorted(new_values))} on role {updated.name}"
+                ),
+                old_values=old_values,
+                new_values=new_values,
+            )
+
         await self.session.commit()
         return updated
 
@@ -136,7 +167,15 @@ class RoleService:
                 f"'{role.name}' is a system role and cannot be deleted."
             )
 
+        before = snapshot(role)
         await self.repository.soft_delete(role)
+
+        await self.activity.record(
+            ActivityAction.DELETE,
+            entity=role,
+            description=f"Deleted role {role.name}",
+            old_values=before,
+        )
         await self.session.commit()
 
         logger.info("Deleted role %s", role.slug)
@@ -144,6 +183,13 @@ class RoleService:
     async def restore(self, role_id: uuid.UUID) -> Role:
         role = await self.repository.get_or_raise(role_id, include_deleted=True)
         restored = await self.repository.restore(role)
+
+        await self.activity.record(
+            ActivityAction.RESTORE,
+            entity=restored,
+            description=f"Restored role {restored.name}",
+            new_values=snapshot(restored),
+        )
         await self.session.commit()
         return restored
 
@@ -172,6 +218,13 @@ class RoleService:
             created += 1
 
         if created:
+            await self.activity.record(
+                ActivityAction.CREATE,
+                entity_type="Role",
+                description=f"Seeded {created} system role(s)",
+                new_values={"created": created},
+                module=ActivityModule.SYSTEM,
+            )
             await self.session.commit()
             logger.info("Seeded %d system roles", created)
 

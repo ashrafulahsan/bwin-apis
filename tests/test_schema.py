@@ -30,6 +30,7 @@ APPLICATION_TABLES = [
     "categories",
     "blogs",
     "blog_tags",
+    "activity_logs",
 ]
 
 
