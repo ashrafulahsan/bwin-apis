@@ -393,6 +393,7 @@ async def test_grouped_by_resource(seeded: PermissionService) -> None:
         "blog",
         "media",
         "category",
+        "menu",
         "translation",
         "setting",
         "report",

@@ -39,6 +39,8 @@ from app.modules.auth.models.password_reset_token import PasswordResetToken
 from app.modules.auth.models.refresh_token import RefreshToken
 from app.modules.auth.schemas.auth import LoginRequest
 from app.modules.auth.services.auth import AuthService
+from app.modules.blogs.models.blog import Blog
+from app.modules.blogs.models.blog_tag import blog_tags
 from app.modules.categories.models.category import Category
 from app.modules.categories.models.category_type import CategoryType
 from app.modules.menus.models.menu import Menu
@@ -200,9 +202,11 @@ async def audited(session: AsyncSession) -> AsyncIterator[AsyncSession]:
 
     async def wipe() -> None:
         await session.execute(delete(ActivityLog))
-        # Menus point at categories with a RESTRICT foreign key, so an
-        # item left behind by another module blocks this wipe.
+        # Menus and blogs both point at categories with a RESTRICT foreign
+        # key, so a row left behind by another module blocks this wipe.
         await session.execute(delete(Menu))
+        await session.execute(delete(blog_tags))
+        await session.execute(delete(Blog))
         await session.execute(delete(Category))
         await session.execute(delete(CategoryType))
         await session.execute(delete(PasswordResetToken))
