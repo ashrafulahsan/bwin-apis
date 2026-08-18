@@ -34,6 +34,7 @@ from app.modules.categories.schemas.category import (
 )
 from app.modules.categories.services.category import CategoryService
 from app.modules.categories.services.category_type import CategoryTypeService
+from app.modules.menus.models.menu import Menu
 from app.modules.permissions.models.permission import Permission
 from app.modules.permissions.models.role_permission import role_permissions
 from app.modules.permissions.services.permission import PermissionService
@@ -53,6 +54,9 @@ PASSWORD = "CategoryTest#2026"
 @pytest.fixture
 async def types(session: AsyncSession) -> AsyncIterator[CategoryTypeService]:
     async def wipe() -> None:
+        # Menus point at categories with a RESTRICT foreign key, so an
+        # item left behind by another module blocks this wipe.
+        await session.execute(delete(Menu))
         await session.execute(delete(Category))
         await session.execute(delete(CategoryType))
         await session.execute(delete(PasswordResetToken))

@@ -116,7 +116,7 @@ async def test_seeding_creates_every_permission(
 ) -> None:
     created = await permissions.seed_system_permissions()
 
-    assert created == len(all_permission_codes()) == 57
+    assert created == len(all_permission_codes()) == 61
 
 
 async def test_seeding_is_idempotent(seeded: PermissionService) -> None:

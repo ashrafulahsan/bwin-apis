@@ -595,18 +595,18 @@ Permissions are `resource.action` codes — `user.view`, `course.create`. The
 resource and action are also stored as separate columns, so an admin screen can
 render the familiar grid of resources down the side and actions across the top.
 
-55 permissions across 14 resources are seeded by migration, along with a
+61 permissions across 16 resources are seeded by migration, along with a
 starting grant matrix:
 
-| Role            | Grants | Shape                                             |
-| --------------- | ------ | ------------------------------------------------- |
-| Super Admin     | 55     | everything                                        |
-| Admin           | 52     | everything except defining new permissions        |
-| Content Manager | 21     | pages, blogs, media, categories — incl. publish   |
-| Editor          | 11     | writes pages and blogs, **cannot publish**        |
-| Instructor      | 12     | courses, lessons, grading                         |
-| Support         | 8      | read access plus sending notifications            |
-| Student         | 5      | read-only                                         |
+| Role            | Grants | Shape                                                  |
+| --------------- | ------ | ------------------------------------------------------ |
+| Super Admin     | 61     | everything                                             |
+| Admin           | 58     | everything except defining new permissions             |
+| Content Manager | 26     | pages, blogs, menus, media, categories — incl. publish |
+| Editor          | 12     | writes pages and blogs, **cannot publish**             |
+| Instructor      | 12     | courses, lessons, grading                              |
+| Support         | 9      | read access plus sending notifications                 |
+| Student         | 6      | read-only                                              |
 
 This is a starting point, not a constraint — administrators can change any of
 it, and re-running the seed will not undo their changes.
@@ -800,6 +800,81 @@ ends up rendered straight into an attribute.
 `reading_minutes` is estimated from the word count whenever the body changes,
 with markup stripped first so a paragraph wrapped in a dozen `<span>`s does not
 read as a dozen extra words.
+
+## Menus
+
+A navigation is a tree of links. Which navigation an item belongs to is not a
+column of its own: `menu_category_id` points at a row in `categories` from the
+**Menu Category** taxonomy, exactly as a blog post draws its category from
+`blog_category`. One vocabulary, managed in one place, in a tree the categories
+module already knows how to nest, rename and retire.
+
+That taxonomy is seeded by migration under a fixed id —
+`ae340508-652a-414a-b5b9-2daf24a728d8`, which the module refers to as
+`MENU_CATEGORY_TYPE_ID` — so every environment resolves the same type. The
+navigations inside it are not seeded: which ones a site has is an editorial
+decision, made through `POST /categories` with that type. A foreign key can
+name a table but never a subset of one, so keeping items inside that taxonomy
+is the service's job and is checked on every write:
+
+```
+POST /menus  { "menu_category_id": <a blog_category row> }
+  → 400  A menu's category must come from the 'Menu Category' category type,
+         and 'Engineering' does not.
+```
+
+**Endpoints**
+
+```
+GET    /api/v1/menus                  POST   /api/v1/menus
+GET    /api/v1/menus/tree             PATCH  /api/v1/menus/{id}
+GET    /api/v1/menus/categories       PUT    /api/v1/menus/{id}/parent
+GET    /api/v1/menus/{id}             DELETE /api/v1/menus/{id}
+GET    /api/v1/menus/{id}/children    POST   /api/v1/menus/{id}/restore
+GET    /api/v1/menus/{id}/ancestors
+```
+
+Reading requires `menu.view`; each write requires its own code. Guards name
+permissions rather than roles — arranging a navigation is content work, so
+content managers hold the full set and editors hold `menu.view`. That is
+deliberately not the categories arrangement: the *vocabulary* of menu
+categories stays restricted to Super Admin and Admin, because reshaping it
+moves every item filed under it.
+
+`GET /menus` filters on `menu_category_id`, `parent_id` and `roots_only`, and
+searches the title, description and link. `/menus/categories` exposes the
+active menu categories an item may belong to, because building a navigation
+needs that list while the category endpoints are restricted to administrators.
+`GET /menus/tree` returns one whole navigation nested and in order, from a
+single flat query linked up in memory — what rendering a menu needs.
+
+### What the tree guarantees
+
+The same rules as the category tree, for the same reason — a parent pointer is
+easy to store and easy to corrupt:
+
+- **An item is never its own ancestor.** Moving one under its own descendant is
+  refused; it would cut that branch out of the tree.
+- **A parent must sit in the same menu category**, or one navigation grows a
+  branch out of another.
+- **Nesting stops at 5 levels**, as categories do.
+- **Deleting is refused while children exist.** Cascading would remove a whole
+  branch of a live navigation on one click; the refusal says what is in the way.
+- **Changing an item's menu category is refused when it has a parent or
+  children**, which would otherwise leave half a branch in the old navigation.
+
+`order` positions an item among its siblings, ascending, and is positive —
+enforced by the request schema and by a `CHECK` constraint, so a write that
+never passed through a schema cannot slip a zero in. Omitting it on create puts
+the item last among its siblings; numbering restarts under each parent.
+`PUT /menus/{id}/parent` re-parents and repositions in one call, and sending
+`parent_id: null` promotes the item to the top level.
+
+`icon` is a name the front end resolves, `image` is a path, and `link` is
+either an internal slug or a full URL — null for a heading that only opens its
+children. `created_by` / `updated_by` are filled from the access token and are
+`ON DELETE SET NULL`, and items are soft deleted, so a removed navigation item
+can be restored.
 
 ## Translations
 

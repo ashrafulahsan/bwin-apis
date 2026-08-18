@@ -48,6 +48,7 @@ from app.modules.categories.models.category_type import CategoryType
 from app.modules.categories.repositories.category_type import CategoryTypeRepository
 from app.modules.categories.schemas.category import CategoryCreate, CategoryUpdate
 from app.modules.categories.services.category import CategoryService
+from app.modules.menus.models.menu import Menu
 from app.modules.permissions.models.permission import Permission
 from app.modules.permissions.models.role_permission import role_permissions
 from app.modules.permissions.services.permission import PermissionService
@@ -89,6 +90,9 @@ async def blogs(session: AsyncSession) -> AsyncIterator[BlogService]:
     async def wipe() -> None:
         await session.execute(delete(blog_tags))
         await session.execute(delete(Blog))
+        # Menus point at categories with a RESTRICT foreign key, so an
+        # item left behind by another module blocks this wipe.
+        await session.execute(delete(Menu))
         await session.execute(delete(Category))
         await session.execute(delete(CategoryType))
         await session.execute(delete(PasswordResetToken))
@@ -307,6 +311,7 @@ async def test_a_missing_taxonomy_says_which_one(
     blogs: BlogService, taxonomy: Taxonomies, session: AsyncSession
 ) -> None:
     """Seeded by migration, so its absence means someone removed it."""
+    await session.execute(delete(Menu))
     await session.execute(delete(Category))
     await session.execute(
         delete(CategoryType).where(CategoryType.slug == BLOG_CATEGORY_TYPE_SLUG)

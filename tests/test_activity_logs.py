@@ -41,6 +41,7 @@ from app.modules.auth.schemas.auth import LoginRequest
 from app.modules.auth.services.auth import AuthService
 from app.modules.categories.models.category import Category
 from app.modules.categories.models.category_type import CategoryType
+from app.modules.menus.models.menu import Menu
 from app.modules.permissions.models.permission import Permission
 from app.modules.permissions.models.role_permission import role_permissions
 from app.modules.permissions.services.permission import PermissionService
@@ -199,6 +200,9 @@ async def audited(session: AsyncSession) -> AsyncIterator[AsyncSession]:
 
     async def wipe() -> None:
         await session.execute(delete(ActivityLog))
+        # Menus point at categories with a RESTRICT foreign key, so an
+        # item left behind by another module blocks this wipe.
+        await session.execute(delete(Menu))
         await session.execute(delete(Category))
         await session.execute(delete(CategoryType))
         await session.execute(delete(PasswordResetToken))

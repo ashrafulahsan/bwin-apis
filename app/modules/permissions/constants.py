@@ -46,6 +46,7 @@ class PermissionResource(StrEnum):
     BLOG = "blog"
     MEDIA = "media"
     CATEGORY = "category"
+    MENU = "menu"
     TRANSLATION = "translation"
     SETTING = "setting"
     REPORT = "report"
@@ -78,6 +79,7 @@ RESOURCE_LABELS: dict[str, str] = {
     PermissionResource.BLOG: "blog posts",
     PermissionResource.MEDIA: "media",
     PermissionResource.CATEGORY: "categories",
+    PermissionResource.MENU: "menu items",
     PermissionResource.TRANSLATION: "translations",
     PermissionResource.SETTING: "settings",
     PermissionResource.REPORT: "reports",
@@ -97,6 +99,7 @@ SYSTEM_PERMISSIONS: dict[str, list[str]] = {
     PermissionResource.BLOG: ["view", "create", "update", "delete", "publish"],
     PermissionResource.MEDIA: ["view", "upload", "delete"],
     PermissionResource.CATEGORY: ["view", "create", "update", "delete"],
+    PermissionResource.MENU: ["view", "create", "update", "delete"],
     PermissionResource.TRANSLATION: ["view", "create", "update", "delete", "import"],
     PermissionResource.SETTING: ["view", "update"],
     PermissionResource.REPORT: ["view", "export"],
@@ -158,6 +161,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("blog", "view", "create", "update", "delete", "publish"),
         *_codes_for("media", "view", "upload", "delete"),
         *_codes_for("category", "view", "create", "update", "delete"),
+        *_codes_for("menu", "view", "create", "update", "delete"),
         *_codes_for("translation", "view", "create", "update", "delete", "import"),
         *_codes_for("setting", "view", "update"),
         *_codes_for("report", "view", "export"),
@@ -169,6 +173,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("blog", "view", "create", "update", "delete", "publish"),
         *_codes_for("media", "view", "upload", "delete"),
         *_codes_for("category", "view", "create", "update", "delete"),
+        *_codes_for("menu", "view", "create", "update", "delete"),
         *_codes_for("translation", "view", "update"),
         *_codes_for("course", "view"),
         *_codes_for("report", "view"),
@@ -184,6 +189,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("blog", "view", "create", "update"),
         *_codes_for("media", "view", "upload"),
         *_codes_for("category", "view"),
+        *_codes_for("menu", "view"),
         *_codes_for("translation", "view"),
         *_codes_for("course", "view"),
     ],
@@ -200,6 +206,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("enrollment", "view"),
         *_codes_for("page", "view"),
         *_codes_for("blog", "view"),
+        *_codes_for("menu", "view"),
         *_codes_for("notification", "view", "send"),
         *_codes_for("report", "view"),
     ],
@@ -209,5 +216,6 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("enrollment", "view"),
         *_codes_for("page", "view"),
         *_codes_for("blog", "view"),
+        *_codes_for("menu", "view"),
     ],
 }

@@ -22,6 +22,7 @@ from app.modules.categories.models.category import Category
 from app.modules.categories.models.category_type import CategoryType
 from app.modules.categories.repositories.category import CategoryRepository
 from app.modules.categories.repositories.category_type import CategoryTypeRepository
+from app.modules.menus.models.menu import Menu
 from app.modules.permissions.models.permission import Permission
 from app.modules.permissions.models.role_permission import role_permissions
 from app.modules.roles.models.role import Role
@@ -212,6 +213,9 @@ async def content(seeded: AsyncSession) -> AsyncIterator[AsyncSession]:
     """
 
     async def wipe() -> None:
+        # Menus point at categories with a RESTRICT foreign key, so an
+        # item left behind by another module blocks this wipe.
+        await seeded.execute(delete(Menu))
         await seeded.execute(delete(blog_tags))
         await seeded.execute(delete(Blog))
         # Children first: the parent pointer is `RESTRICT`, so a single
