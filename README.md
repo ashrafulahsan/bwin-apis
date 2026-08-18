@@ -595,18 +595,18 @@ Permissions are `resource.action` codes — `user.view`, `course.create`. The
 resource and action are also stored as separate columns, so an admin screen can
 render the familiar grid of resources down the side and actions across the top.
 
-61 permissions across 16 resources are seeded by migration, along with a
+69 permissions across 18 resources are seeded by migration, along with a
 starting grant matrix:
 
-| Role            | Grants | Shape                                                  |
-| --------------- | ------ | ------------------------------------------------------ |
-| Super Admin     | 61     | everything                                             |
-| Admin           | 58     | everything except defining new permissions             |
-| Content Manager | 26     | pages, blogs, menus, media, categories — incl. publish |
-| Editor          | 12     | writes pages and blogs, **cannot publish**             |
-| Instructor      | 12     | courses, lessons, grading                              |
-| Support         | 9      | read access plus sending notifications                 |
-| Student         | 6      | read-only                                              |
+| Role            | Grants | Shape                                                   |
+| --------------- | ------ | ------------------------------------------------------- |
+| Super Admin     | 69     | everything                                              |
+| Admin           | 66     | everything except defining new permissions              |
+| Content Manager | 31     | pages, blogs, menus, records, media, categories         |
+| Editor          | 16     | writes pages, blogs and records, **cannot publish**     |
+| Instructor      | 12     | courses, lessons, grading                               |
+| Support         | 10     | read access plus sending notifications                  |
+| Student         | 7      | read-only                                               |
 
 This is a starting point, not a constraint — administrators can change any of
 it, and re-running the seed will not undo their changes.
@@ -875,6 +875,87 @@ either an internal slug or a full URL — null for a heading that only opens its
 children. `created_by` / `updated_by` are filled from the access token and are
 `ON DELETE SET NULL`, and items are soft deleted, so a removed navigation item
 can be restored.
+
+## Master CRUD
+
+A small dynamic-content system in three tables. A **field** defines one input —
+"Phone number", a number, required — and belongs to a category. A **record** is
+one entry filed under a category. A **field value** is one record's answer to
+one field. Adding a question to a form is therefore a row rather than a
+migration, which is the whole point of the arrangement.
+
+The category ties the three together, and a foreign key can name a table but
+never a subset of one, so the service is what holds the rule:
+
+```
+POST /master-cruds  { "category_id": <Suppliers>, "field_values": [<a Branches field>] }
+  → 400  'Suppliers' has no field '…'. A record may only answer the fields
+         defined on its own category.
+```
+
+**Endpoints**
+
+```
+GET    /api/v1/master-crud-fields                      POST   /api/v1/master-crud-fields
+GET    /api/v1/master-crud-fields/{id}                 PATCH  /api/v1/master-crud-fields/{id}
+GET    /api/v1/master-crud-fields/by-category/{id}     DELETE /api/v1/master-crud-fields/{id}
+                                                       POST   /api/v1/master-crud-fields/{id}/restore
+
+GET    /api/v1/master-cruds                            POST   /api/v1/master-cruds
+GET    /api/v1/master-cruds/form?category_id=          PATCH  /api/v1/master-cruds/{id}
+GET    /api/v1/master-cruds/{id}                       DELETE /api/v1/master-cruds/{id}
+GET    /api/v1/master-cruds/by-slug/{slug}             POST   /api/v1/master-cruds/{id}/restore
+```
+
+**Values are written through the record, never on their own.** An answer has no
+life apart from the record it belongs to, and validating a submission means
+seeing the whole of it at once — half a form cannot be checked against
+"everything required was answered". `field_values` on create is the whole set;
+sending it on update replaces the whole set, which is what a form submission
+means, and omitting it leaves the stored answers untouched.
+
+`GET /master-cruds/form?category_id=` returns the active fields a record must
+answer, so building the form does not require the field-management permission.
+
+### Two resources, deliberately
+
+`master_crud_field.*` designs the form; `master_crud.*` fills it in. They are
+separate permission codes because they are different jobs: changing a field
+changes what every stored answer means, while adding a record is ordinary
+content work. Content managers hold every record permission and only
+`master_crud_field.view`; editors write records but do not delete them, exactly
+as they write posts without publishing them.
+
+### What the module guarantees
+
+- **A field records have answered cannot be deleted.** The specified rule, and
+  the reason `master_crud_field_id` is `ON DELETE RESTRICT`. The refusal says
+  how many answers are in the way; setting the field inactive stops it being
+  asked of new records without destroying anything. Soft-deleted records count
+  — their answers are what a restore brings back.
+- **Neither can it change category or type once answered**, for the same
+  reason. Renaming and retiring stay allowed: neither changes what a stored
+  answer means.
+- **Every active required field must be answered**, and a blank string does not
+  count as an answer.
+- **Each answer is validated against its field's type** and normalized to one
+  spelling — `YES`, `1` and `true` all store as `true`, so no reader downstream
+  has to know the difference. A `javascript:` URL is refused by the same rule
+  the SEO fields apply.
+- **One answer per field per record**, held by `UNIQUE (master_crud_id,
+  master_crud_field_id)`.
+- **Moving a record to another category requires the new category's answers in
+  the same request** — the old ones belong to fields that category never asked.
+
+Field names are unique within a category, so a stored answer always resolves to
+one question; the same name in another category is ordinary. `value` is text
+whatever the type: one column cannot be four types at once, and a column per
+type — three of them null on every row — is worse to read and worse to query.
+
+`order` positions a record within its category and restarts at 1 for each, so a
+listing is only in a meaningful sequence once scoped with `category_id`. Both
+records and fields are soft deleted; values are not, because a value has no
+life of its own.
 
 ## Translations
 

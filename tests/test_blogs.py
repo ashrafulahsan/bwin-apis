@@ -48,6 +48,11 @@ from app.modules.categories.models.category_type import CategoryType
 from app.modules.categories.repositories.category_type import CategoryTypeRepository
 from app.modules.categories.schemas.category import CategoryCreate, CategoryUpdate
 from app.modules.categories.services.category import CategoryService
+from app.modules.master_cruds.models.master_crud import MasterCrud
+from app.modules.master_cruds.models.master_crud_field import MasterCrudField
+from app.modules.master_cruds.models.master_crud_field_value import (
+    MasterCrudFieldValue,
+)
 from app.modules.menus.models.menu import Menu
 from app.modules.permissions.models.permission import Permission
 from app.modules.permissions.models.role_permission import role_permissions
@@ -92,6 +97,12 @@ async def blogs(session: AsyncSession) -> AsyncIterator[BlogService]:
         await session.execute(delete(Blog))
         # Menus point at categories with a RESTRICT foreign key, so an
         # item left behind by another module blocks this wipe.
+        # Master CRUD values, records and fields all point at categories or
+        # at each other with RESTRICT foreign keys, so a row left behind by
+        # another module blocks this wipe.
+        await session.execute(delete(MasterCrudFieldValue))
+        await session.execute(delete(MasterCrud))
+        await session.execute(delete(MasterCrudField))
         await session.execute(delete(Menu))
         await session.execute(delete(Category))
         await session.execute(delete(CategoryType))

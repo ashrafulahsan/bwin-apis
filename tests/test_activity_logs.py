@@ -43,6 +43,11 @@ from app.modules.blogs.models.blog import Blog
 from app.modules.blogs.models.blog_tag import blog_tags
 from app.modules.categories.models.category import Category
 from app.modules.categories.models.category_type import CategoryType
+from app.modules.master_cruds.models.master_crud import MasterCrud
+from app.modules.master_cruds.models.master_crud_field import MasterCrudField
+from app.modules.master_cruds.models.master_crud_field_value import (
+    MasterCrudFieldValue,
+)
 from app.modules.menus.models.menu import Menu
 from app.modules.permissions.models.permission import Permission
 from app.modules.permissions.models.role_permission import role_permissions
@@ -204,6 +209,12 @@ async def audited(session: AsyncSession) -> AsyncIterator[AsyncSession]:
         await session.execute(delete(ActivityLog))
         # Menus and blogs both point at categories with a RESTRICT foreign
         # key, so a row left behind by another module blocks this wipe.
+        # Master CRUD values, records and fields all point at categories or
+        # at each other with RESTRICT foreign keys, so a row left behind by
+        # another module blocks this wipe.
+        await session.execute(delete(MasterCrudFieldValue))
+        await session.execute(delete(MasterCrud))
+        await session.execute(delete(MasterCrudField))
         await session.execute(delete(Menu))
         await session.execute(delete(blog_tags))
         await session.execute(delete(Blog))

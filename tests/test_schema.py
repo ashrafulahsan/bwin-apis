@@ -16,6 +16,7 @@ JUNCTIONS = {
     "role_permissions": ("role_id", "permission_id"),
     "user_roles": ("user_id", "role_id"),
     "blog_tags": ("blog_id", "tag_id"),
+    "master_crud_field_values": ("master_crud_id", "master_crud_field_id"),
 }
 
 APPLICATION_TABLES = [
@@ -31,6 +32,9 @@ APPLICATION_TABLES = [
     "blogs",
     "blog_tags",
     "menus",
+    "master_cruds",
+    "master_crud_fields",
+    "master_crud_field_values",
     "activity_logs",
 ]
 
