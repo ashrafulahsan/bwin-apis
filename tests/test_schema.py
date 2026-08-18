@@ -31,6 +31,7 @@ APPLICATION_TABLES = [
     "categories",
     "blogs",
     "blog_tags",
+    "pages",
     "menus",
     "master_cruds",
     "master_crud_fields",

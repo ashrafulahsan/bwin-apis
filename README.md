@@ -801,6 +801,84 @@ ends up rendered straight into an attribute.
 with markup stripped first so a paragraph wrapped in a dozen `<span>`s does not
 read as a dozen extra words.
 
+## Pages
+
+Standalone CMS content addressed by its slug — "About us", a privacy policy, a
+landing page. A page behaves like a blog post without the taxonomy: same
+publication transitions, same search metadata, same soft delete, but nothing to
+file it under.
+
+**Endpoints**
+
+```
+GET    /api/v1/pages                     POST   /api/v1/pages
+GET    /api/v1/pages/{id}                PATCH  /api/v1/pages/{id}
+GET    /api/v1/pages/by-slug/{slug}      DELETE /api/v1/pages/{id}
+                                         POST   /api/v1/pages/{id}/restore
+                                         POST   /api/v1/pages/{id}/publish
+                                         POST   /api/v1/pages/{id}/unpublish
+                                         POST   /api/v1/pages/{id}/archive
+```
+
+`GET /pages` takes `search`, `status`, `featured_only` and `live_only`.
+**The search matches the body as well as the title, slug and summary** —
+"which page mentions the refund window?" is the question an editor actually
+has, and a title-only search cannot answer it. `live_only` filters in SQL
+rather than after paging, so the total never disagrees with the rows returned.
+`/pages/by-slug/{slug}` is how a front end resolves a URL to its content.
+
+The `page.*` permission codes were seeded with the platform's original
+permission set and granted to the roles holding the equivalent `blog.*` codes,
+so this module needed no migration of its own — it is the code those codes were
+always describing.
+
+### Publishing is a transition, not a field
+
+Exactly as for blog posts, and for the same reason: `status` cannot be set
+through create or update, because going live has its own permission
+(`page.publish`) that Editors deliberately do not hold.
+
+- **A page is always created as a draft**, so creating one cannot bypass the
+  publish check.
+- **`published_at` is set by the transition.** A future date schedules the
+  page — `is_live` compares it against the clock on every read, so nothing has
+  to run to flip it over.
+- **Unpublishing keeps the date**, so republishing does not present an old page
+  as new. **Archiving retires it without deleting it**, so its URL still
+  resolves for anyone holding a link.
+- **A published slug is frozen.** It is already in links, menus and search
+  results; changing it breaks all of them silently. Draft slugs are free to
+  change.
+
+A slug asked for explicitly is refused when taken, rather than suffixed — an
+editor who wanted a particular URL needs to be told, not handed `-2` and left
+to find out from the address bar. A derived slug is quietly made unique.
+
+### SEO metadata
+
+The same `SEOFieldsMixin` the blogs table uses
+([app/shared/models/seo.py](app/shared/models/seo.py)), so the two cannot drift
+apart, and the same read-time cascade fills whatever an author left blank:
+
+| Served field       | Falls back to        |
+| ------------------ | -------------------- |
+| `meta_title`       | the page title       |
+| `meta_description` | the summary, shortened to what search engines display |
+| `og_title`         | `meta_title`         |
+| `og_description`   | `meta_description`   |
+| `og_image_url`     | the thumbnail        |
+| `meta_robots`      | `index, follow`      |
+
+A `meta_tag` box in an editor writes to **`meta_keywords`** — the shared field
+name, so one client cannot call it something the next one does not recognise.
+`meta_robots` is validated against a directive allowlist and `canonical_url` /
+`og_image_url` must be `http(s)` or site-relative, both for the reasons the
+blogs section gives.
+
+Sending one SEO field updates that field alone; the other seven keep their
+values. Clearing `meta_robots` restores the default rather than being dropped,
+which is what emptying that box asks for.
+
 ## Menus
 
 A navigation is a tree of links. Which navigation an item belongs to is not a
