@@ -16,6 +16,7 @@ from app.modules.users.constants import (
     PROVIDER_USER_ID_MAX_LENGTH,
     UserStatus,
 )
+from app.modules.users.models.user_details import UserDetails
 from app.modules.users.models.user_identity import UserIdentity
 from app.modules.users.models.user_role import user_roles
 
@@ -124,6 +125,13 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+    details: Mapped[UserDetails | None] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        foreign_keys=[UserDetails.user_id],
     )
 
     __table_args__ = (

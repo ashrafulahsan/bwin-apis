@@ -21,6 +21,7 @@ JUNCTIONS = {
 
 APPLICATION_TABLES = [
     "users",
+    "user_details",
     "roles",
     "permissions",
     "translations",

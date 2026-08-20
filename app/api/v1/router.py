@@ -18,6 +18,7 @@ from app.modules.roles.routers import router as roles_router
 from app.modules.settings.routers import router as settings_router
 from app.modules.translations.routers import router as translations_router
 from app.modules.users.routers import router as users_router
+from app.modules.users.routers.user_details import router as user_details_router
 
 api_router = APIRouter()
 
@@ -26,6 +27,7 @@ api_router.include_router(auth_router)
 # After the fixed auth paths, so `/auth/me` is matched before `/auth/{provider}`.
 api_router.include_router(oauth_router)
 api_router.include_router(users_router)
+api_router.include_router(user_details_router)
 api_router.include_router(roles_router)
 api_router.include_router(permissions_router)
 api_router.include_router(category_type_router)

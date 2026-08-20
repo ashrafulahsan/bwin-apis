@@ -9,6 +9,11 @@ from app.modules.users.schemas.user import (
     UserSummary,
     UserUpdate,
 )
+from app.modules.users.schemas.user_details import (
+    UserDetailsCreate,
+    UserDetailsRead,
+    UserDetailsUpdate,
+)
 
 __all__ = [
     "IdentifierLookup",
@@ -20,4 +25,7 @@ __all__ = [
     "UserRoleAssignment",
     "UserSummary",
     "UserUpdate",
+    "UserDetailsCreate",
+    "UserDetailsRead",
+    "UserDetailsUpdate",
 ]
