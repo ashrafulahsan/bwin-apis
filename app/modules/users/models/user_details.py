@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,7 +23,6 @@ class UserDetails(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         PgUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
         index=True,
     )
     gender: Mapped[str | None] = mapped_column(String(50), default=None)
@@ -65,4 +64,8 @@ class UserDetails(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     manager: Mapped["User | None"] = relationship(
         foreign_keys=[reporting_to], lazy="selectin"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_user_details_user_id"),
     )

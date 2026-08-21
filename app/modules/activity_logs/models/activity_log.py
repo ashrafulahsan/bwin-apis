@@ -110,6 +110,7 @@ class ActivityModule(StrEnum):
     PAGES = "pages"
     MENUS = "menus"
     MASTER_CRUDS = "master_cruds"
+    COURSES = "courses"
     CMS = "cms"
     LMS = "lms"
     MEDIA = "media"

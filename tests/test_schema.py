@@ -30,6 +30,7 @@ APPLICATION_TABLES = [
     "role_permissions",
     "category_types",
     "categories",
+    "courses",
     "blogs",
     "blog_tags",
     "pages",
