@@ -1,0 +1,1 @@
+"""Consultancy management module."""

@@ -9,6 +9,7 @@ from app.modules.auth.routers import router as auth_router
 from app.modules.blogs.routers import router as blogs_router
 from app.modules.categories.routers import category_type_router
 from app.modules.categories.routers import router as categories_router
+from app.modules.consultancies.routers import router as consultancies_router
 from app.modules.courses.routers import router as courses_router
 from app.modules.master_cruds.routers import master_crud_field_router
 from app.modules.master_cruds.routers import router as master_cruds_router
@@ -33,6 +34,7 @@ api_router.include_router(roles_router)
 api_router.include_router(permissions_router)
 api_router.include_router(category_type_router)
 api_router.include_router(categories_router)
+api_router.include_router(consultancies_router)
 api_router.include_router(courses_router)
 api_router.include_router(blogs_router)
 api_router.include_router(pages_router)

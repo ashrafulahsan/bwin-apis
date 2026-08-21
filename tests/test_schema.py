@@ -31,6 +31,7 @@ APPLICATION_TABLES = [
     "category_types",
     "categories",
     "courses",
+    "consultancies",
     "blogs",
     "blog_tags",
     "pages",
@@ -63,9 +64,9 @@ async def test_every_table_has_a_single_column_id_primary_key(
             lambda sync: inspect(sync).get_pk_constraint(table)
         )
 
-    assert primary_key["constrained_columns"] == [
-        "id"
-    ], f"{table} primary key is {primary_key['constrained_columns']}"
+    assert primary_key["constrained_columns"] == ["id"], (
+        f"{table} primary key is {primary_key['constrained_columns']}"
+    )
 
 
 @pytest.mark.parametrize(("table", "columns"), JUNCTIONS.items())

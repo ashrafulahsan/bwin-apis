@@ -40,6 +40,7 @@ class PermissionResource(StrEnum):
     ROLE = "role"
     PERMISSION = "permission"
     COURSE = "course"
+    CONSULTANCY = "consultancy"
     LESSON = "lesson"
     ENROLLMENT = "enrollment"
     PAGE = "page"
@@ -75,6 +76,7 @@ RESOURCE_LABELS: dict[str, str] = {
     PermissionResource.ROLE: "roles",
     PermissionResource.PERMISSION: "permissions",
     PermissionResource.COURSE: "courses",
+    PermissionResource.CONSULTANCY: "consultancies",
     PermissionResource.LESSON: "lessons",
     PermissionResource.ENROLLMENT: "enrolments",
     PermissionResource.PAGE: "pages",
@@ -97,6 +99,7 @@ SYSTEM_PERMISSIONS: dict[str, list[str]] = {
     PermissionResource.ROLE: ["view", "create", "update", "delete", "assign"],
     PermissionResource.PERMISSION: ["view", "create", "update", "delete", "assign"],
     PermissionResource.COURSE: ["view", "create", "update", "delete", "publish"],
+    PermissionResource.CONSULTANCY: ["view", "create", "update", "delete"],
     PermissionResource.LESSON: ["view", "create", "update", "delete"],
     PermissionResource.ENROLLMENT: ["view", "create", "delete", "grade"],
     PermissionResource.PAGE: ["view", "create", "update", "delete", "publish"],
@@ -161,6 +164,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("role", "view", "create", "update", "delete", "assign"),
         *_codes_for("permission", "view", "assign"),
         *_codes_for("course", "view", "create", "update", "delete", "publish"),
+        *_codes_for("consultancy", "view", "create", "update", "delete"),
         *_codes_for("lesson", "view", "create", "update", "delete"),
         *_codes_for("enrollment", "view", "create", "delete", "grade"),
         *_codes_for("page", "view", "create", "update", "delete", "publish"),
@@ -188,6 +192,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("master_crud_field", "view"),
         *_codes_for("translation", "view", "update"),
         *_codes_for("course", "view"),
+        *_codes_for("consultancy", "view"),
         *_codes_for("report", "view"),
         # Reads the trail but cannot take a copy of it out of the system.
         *_codes_for("activity_log", "view"),
@@ -206,9 +211,11 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("master_crud_field", "view"),
         *_codes_for("translation", "view"),
         *_codes_for("course", "view"),
+        *_codes_for("consultancy", "view"),
     ],
     "instructor": [
         *_codes_for("course", "view", "create", "update"),
+        *_codes_for("consultancy", "view", "create", "update"),
         *_codes_for("lesson", "view", "create", "update", "delete"),
         *_codes_for("enrollment", "view", "grade"),
         *_codes_for("media", "view", "upload"),
@@ -217,6 +224,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
     "support": [
         *_codes_for("user", "view"),
         *_codes_for("course", "view"),
+        *_codes_for("consultancy", "view"),
         *_codes_for("enrollment", "view"),
         *_codes_for("page", "view"),
         *_codes_for("blog", "view"),
@@ -227,6 +235,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
     ],
     "student": [
         *_codes_for("course", "view"),
+        *_codes_for("consultancy", "view"),
         *_codes_for("lesson", "view"),
         *_codes_for("enrollment", "view"),
         *_codes_for("page", "view"),
