@@ -375,8 +375,8 @@ async def test_list_filters_by_resource(seeded: PermissionService) -> None:
 async def test_list_filters_by_action(seeded: PermissionService) -> None:
     _, total = await seeded.list_permissions(PaginationParams(), action="publish")
 
-    # Courses, pages and blogs are the three things that get published.
-    assert total == 3
+    # Courses, pages, blogs and automations are what get published.
+    assert total == 4
 
 
 async def test_grouped_by_resource(seeded: PermissionService) -> None:
@@ -388,6 +388,7 @@ async def test_grouped_by_resource(seeded: PermissionService) -> None:
         "permission",
         "course",
         "consultancy",
+        "automation",
         "lesson",
         "enrollment",
         "page",

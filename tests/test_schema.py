@@ -32,6 +32,7 @@ APPLICATION_TABLES = [
     "categories",
     "courses",
     "consultancies",
+    "automations",
     "blogs",
     "blog_tags",
     "pages",

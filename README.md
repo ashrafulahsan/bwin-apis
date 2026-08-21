@@ -595,18 +595,18 @@ Permissions are `resource.action` codes — `user.view`, `course.create`. The
 resource and action are also stored as separate columns, so an admin screen can
 render the familiar grid of resources down the side and actions across the top.
 
-69 permissions across 18 resources are seeded by migration, along with a
+78 permissions across 20 resources are seeded by migration, along with a
 starting grant matrix:
 
-| Role            | Grants | Shape                                                   |
-| --------------- | ------ | ------------------------------------------------------- |
-| Super Admin     | 69     | everything                                              |
-| Admin           | 66     | everything except defining new permissions              |
-| Content Manager | 31     | pages, blogs, menus, records, media, categories         |
-| Editor          | 16     | writes pages, blogs and records, **cannot publish**     |
-| Instructor      | 12     | courses, lessons, grading                               |
-| Support         | 10     | read access plus sending notifications                  |
-| Student         | 7      | read-only                                               |
+| Role            | Grants | Shape                                                        |
+| --------------- | ------ | ------------------------------------------------------------ |
+| Super Admin     | 78     | everything                                                   |
+| Admin           | 75     | everything except defining new permissions                   |
+| Content Manager | 37     | pages, blogs, automations, menus, records, media, categories |
+| Editor          | 20     | writes pages, blogs, automations and records, **cannot publish** |
+| Instructor      | 16     | courses, consultancies, lessons, grading                     |
+| Support         | 12     | read access plus sending notifications                       |
+| Student         | 9      | read-only                                                    |
 
 This is a starting point, not a constraint — administrators can change any of
 it, and re-running the seed will not undo their changes.

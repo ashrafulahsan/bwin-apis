@@ -112,6 +112,7 @@ class ActivityModule(StrEnum):
     MASTER_CRUDS = "master_cruds"
     COURSES = "courses"
     CONSULTANCIES = "consultancies"
+    AUTOMATIONS = "automations"
     CMS = "cms"
     LMS = "lms"
     MEDIA = "media"

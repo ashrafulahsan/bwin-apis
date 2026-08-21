@@ -6,6 +6,7 @@ from app.api.v1 import health
 from app.modules.activity_logs.routers import router as activity_logs_router
 from app.modules.auth.routers import oauth_router
 from app.modules.auth.routers import router as auth_router
+from app.modules.automations.routers import router as automations_router
 from app.modules.blogs.routers import router as blogs_router
 from app.modules.categories.routers import category_type_router
 from app.modules.categories.routers import router as categories_router
@@ -34,6 +35,7 @@ api_router.include_router(roles_router)
 api_router.include_router(permissions_router)
 api_router.include_router(category_type_router)
 api_router.include_router(categories_router)
+api_router.include_router(automations_router)
 api_router.include_router(consultancies_router)
 api_router.include_router(courses_router)
 api_router.include_router(blogs_router)
