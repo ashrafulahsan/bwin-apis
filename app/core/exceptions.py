@@ -84,7 +84,7 @@ class ConflictException(AppException):
 
 
 class ValidationException(AppException):
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     error_code = ErrorCode.VALIDATION_ERROR
     message = "The submitted data is invalid."
 
@@ -110,7 +110,7 @@ _STATUS_TO_ERROR_CODE: dict[int, ErrorCode] = {
     status.HTTP_404_NOT_FOUND: ErrorCode.NOT_FOUND,
     status.HTTP_405_METHOD_NOT_ALLOWED: ErrorCode.METHOD_NOT_ALLOWED,
     status.HTTP_409_CONFLICT: ErrorCode.CONFLICT,
-    status.HTTP_422_UNPROCESSABLE_ENTITY: ErrorCode.VALIDATION_ERROR,
+    status.HTTP_422_UNPROCESSABLE_CONTENT: ErrorCode.VALIDATION_ERROR,
     status.HTTP_429_TOO_MANY_REQUESTS: ErrorCode.RATE_LIMITED,
     status.HTTP_503_SERVICE_UNAVAILABLE: ErrorCode.SERVICE_UNAVAILABLE,
 }
@@ -168,7 +168,7 @@ async def validation_exception_handler(
     _: Request, exc: RequestValidationError
 ) -> JSONResponse:
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=error_response(
             message="Request validation failed.",
             error_code=ErrorCode.VALIDATION_ERROR,
@@ -182,7 +182,7 @@ async def pydantic_validation_exception_handler(
 ) -> JSONResponse:
     """Catch model validation raised outside request parsing (e.g. in services)."""
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=error_response(
             message="Data validation failed.",
             error_code=ErrorCode.VALIDATION_ERROR,
