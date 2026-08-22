@@ -91,6 +91,10 @@ class ActivityAction(StrEnum):
     ENROLL = "enroll"
     UNENROLL = "unenroll"
 
+    # -- Mailing list -------------------------------------------------------
+    SUBSCRIBE = "subscribe"
+    UNSUBSCRIBE = "unsubscribe"
+
 
 class ActivityModule(StrEnum):
     """Which part of the platform the action belongs to.
@@ -113,6 +117,7 @@ class ActivityModule(StrEnum):
     COURSES = "courses"
     CONSULTANCIES = "consultancies"
     AUTOMATIONS = "automations"
+    SUBSCRIPTIONS = "subscriptions"
     CMS = "cms"
     LMS = "lms"
     MEDIA = "media"

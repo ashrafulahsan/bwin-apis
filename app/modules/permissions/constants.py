@@ -42,6 +42,7 @@ class PermissionResource(StrEnum):
     COURSE = "course"
     CONSULTANCY = "consultancy"
     AUTOMATION = "automation"
+    SUBSCRIPTION = "subscription"
     LESSON = "lesson"
     ENROLLMENT = "enrollment"
     PAGE = "page"
@@ -79,6 +80,7 @@ RESOURCE_LABELS: dict[str, str] = {
     PermissionResource.COURSE: "courses",
     PermissionResource.CONSULTANCY: "consultancies",
     PermissionResource.AUTOMATION: "automations",
+    PermissionResource.SUBSCRIPTION: "newsletter subscribers",
     PermissionResource.LESSON: "lessons",
     PermissionResource.ENROLLMENT: "enrolments",
     PermissionResource.PAGE: "pages",
@@ -109,6 +111,7 @@ SYSTEM_PERMISSIONS: dict[str, list[str]] = {
         "delete",
         "publish",
     ],
+    PermissionResource.SUBSCRIPTION: ["view", "create", "update", "delete"],
     PermissionResource.LESSON: ["view", "create", "update", "delete"],
     PermissionResource.ENROLLMENT: ["view", "create", "delete", "grade"],
     PermissionResource.PAGE: ["view", "create", "update", "delete", "publish"],
@@ -175,6 +178,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("course", "view", "create", "update", "delete", "publish"),
         *_codes_for("consultancy", "view", "create", "update", "delete"),
         *_codes_for("automation", "view", "create", "update", "delete", "publish"),
+        *_codes_for("subscription", "view", "create", "update", "delete"),
         *_codes_for("lesson", "view", "create", "update", "delete"),
         *_codes_for("enrollment", "view", "create", "delete", "grade"),
         *_codes_for("page", "view", "create", "update", "delete", "publish"),
@@ -192,6 +196,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
     ],
     "content-manager": [
         *_codes_for("page", "view", "create", "update", "delete", "publish"),
+        *_codes_for("subscription", "view", "create", "update", "delete"),
         *_codes_for("automation", "view", "create", "update", "delete", "publish"),
         *_codes_for("blog", "view", "create", "update", "delete", "publish"),
         *_codes_for("media", "view", "upload", "delete"),
@@ -239,6 +244,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("course", "view"),
         *_codes_for("consultancy", "view"),
         *_codes_for("automation", "view"),
+        *_codes_for("subscription", "view"),
         *_codes_for("enrollment", "view"),
         *_codes_for("page", "view"),
         *_codes_for("blog", "view"),

@@ -40,6 +40,7 @@ APPLICATION_TABLES = [
     "master_cruds",
     "master_crud_fields",
     "master_crud_field_values",
+    "subscriptions",
     "activity_logs",
 ]
 

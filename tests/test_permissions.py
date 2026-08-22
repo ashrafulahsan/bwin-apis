@@ -389,6 +389,7 @@ async def test_grouped_by_resource(seeded: PermissionService) -> None:
         "course",
         "consultancy",
         "automation",
+        "subscription",
         "lesson",
         "enrollment",
         "page",

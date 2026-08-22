@@ -53,6 +53,10 @@ class SettingKey(StrEnum):
     SOCIAL_LOGIN_REDIRECT_PATH = "social_login_redirect_path"
     #: Frontend page that takes a reset token and asks for a new password.
     PASSWORD_RESET_PATH = "password_reset_path"
+    #: Frontend page a newsletter confirmation link points at.
+    NEWSLETTER_CONFIRM_PATH = "newsletter_confirm_path"
+    #: Frontend page an unsubscribe link points at.
+    NEWSLETTER_UNSUBSCRIBE_PATH = "newsletter_unsubscribe_path"
 
     # -- Google ---------------------------------------------------------
     GOOGLE_AUTH_ENABLED = "google_auth_enabled"
@@ -135,6 +139,28 @@ SYSTEM_SETTINGS: list[SettingDefinition] = [
         description=(
             "Frontend page a reset link points at. The token is appended as "
             "`?token=`."
+        ),
+    ),
+    _definition(
+        SettingKey.NEWSLETTER_CONFIRM_PATH,
+        value="/newsletter/confirm",
+        value_type=SettingType.STRING,
+        group=SettingGroup.GENERAL,
+        label="Newsletter confirmation page",
+        description=(
+            "Frontend page a newsletter confirmation link points at. The "
+            "token is appended as `?token=`."
+        ),
+    ),
+    _definition(
+        SettingKey.NEWSLETTER_UNSUBSCRIBE_PATH,
+        value="/newsletter/unsubscribe",
+        value_type=SettingType.STRING,
+        group=SettingGroup.GENERAL,
+        label="Newsletter unsubscribe page",
+        description=(
+            "Frontend page the unsubscribe link in every message footer "
+            "points at. The token is appended as `?token=`."
         ),
     ),
     _definition(
