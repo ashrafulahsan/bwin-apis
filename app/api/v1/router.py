@@ -21,6 +21,9 @@ from app.modules.roles.routers import router as roles_router
 from app.modules.settings.routers import router as settings_router
 from app.modules.subscriptions.routers import newsletter_router
 from app.modules.subscriptions.routers import router as subscriptions_router
+from app.modules.support.routers import admin_router as support_admin_router
+from app.modules.support.routers import router as support_router
+from app.modules.support.routers import trainer_router as support_trainer_router
 from app.modules.translations.routers import router as translations_router
 from app.modules.users.routers import router as users_router
 from app.modules.users.routers.user_details import router as user_details_router
@@ -50,5 +53,11 @@ api_router.include_router(subscriptions_router)
 # Public signup, confirm and unsubscribe. Separate from the guarded
 # `/subscriptions` router above precisely so nothing there is an exception.
 api_router.include_router(newsletter_router)
+# The admin and trainer routers first: their paths are fixed, and
+# `/support/tickets/{ticket_id}` in the shared router would otherwise
+# swallow `/support/my-tickets` and `/support/admin/tickets`.
+api_router.include_router(support_admin_router)
+api_router.include_router(support_trainer_router)
+api_router.include_router(support_router)
 api_router.include_router(translations_router)
 api_router.include_router(activity_logs_router)

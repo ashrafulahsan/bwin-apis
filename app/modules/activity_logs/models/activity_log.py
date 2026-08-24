@@ -95,6 +95,17 @@ class ActivityAction(StrEnum):
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
 
+    # -- Support desk ---------------------------------------------------------
+    ASSIGN = "assign"
+    REASSIGN = "reassign"
+    ESCALATE = "escalate"
+    REPLY = "reply"
+    RESOLVE = "resolve"
+    CLOSE = "close"
+    REOPEN = "reopen"
+    MERGE = "merge"
+    FEEDBACK = "feedback"
+
 
 class ActivityModule(StrEnum):
     """Which part of the platform the action belongs to.
@@ -120,6 +131,7 @@ class ActivityModule(StrEnum):
     SUBSCRIPTIONS = "subscriptions"
     CMS = "cms"
     LMS = "lms"
+    SUPPORT = "support"
     MEDIA = "media"
     NOTIFICATIONS = "notifications"
     REPORTS = "reports"
