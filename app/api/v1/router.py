@@ -17,6 +17,10 @@ from app.modules.inquiries.routers import router as inquiries_router
 from app.modules.master_cruds.routers import master_crud_field_router
 from app.modules.master_cruds.routers import router as master_cruds_router
 from app.modules.menus.routers import router as menus_router
+from app.modules.notifications.routers import (
+    admin_router as notifications_admin_router,
+)
+from app.modules.notifications.routers import router as notifications_router
 from app.modules.pages.routers import router as pages_router
 from app.modules.permissions.routers import router as permissions_router
 from app.modules.roles.routers import router as roles_router
@@ -61,6 +65,13 @@ api_router.include_router(newsletter_router)
 api_router.include_router(support_admin_router)
 api_router.include_router(support_trainer_router)
 api_router.include_router(support_router)
+api_router.include_router(notifications_admin_router)
+# The recipient's own routes. `/notifications/unread-count` and
+# `/notifications/mark-all-read` are fixed paths, so this router is
+# mounted after the admin one but its own ordering is what matters:
+# FastAPI matches in declaration order and both sit before
+# `/notifications/{notification_id}`.
+api_router.include_router(notifications_router)
 api_router.include_router(inquiries_admin_router)
 # Public contact form. Separate from the guarded admin router above
 # precisely so nothing there is an exception.

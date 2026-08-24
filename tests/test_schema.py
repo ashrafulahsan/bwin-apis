@@ -17,6 +17,9 @@ JUNCTIONS = {
     "user_roles": ("user_id", "role_id"),
     "blog_tags": ("blog_id", "tag_id"),
     "master_crud_field_values": ("master_crud_id", "master_crud_field_id"),
+    # Carries engagement state as well as the pair, but the pair is still a
+    # natural key: one person gets one copy of one notification.
+    "notification_recipients": ("notification_id", "user_id"),
 }
 
 APPLICATION_TABLES = [
@@ -55,6 +58,8 @@ APPLICATION_TABLES = [
     "support_ticket_activities",
     "support_ticket_feedback",
     "contact_inquiries",
+    "notifications",
+    "notification_recipients",
     "activity_logs",
 ]
 

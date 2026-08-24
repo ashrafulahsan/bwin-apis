@@ -93,6 +93,10 @@ class ActivityAction(StrEnum):
     #: details, for instance. Logging every read of everything would bury
     #: the entries that matter.
     VIEW = "view"
+    #: Acknowledging something addressed to you, which is not the same as
+    #: opening it: a notification can be marked read from a list without its
+    #: details page ever being viewed.
+    READ = "read"
 
     # -- Learning ----------------------------------------------------------
     ENROLL = "enroll"

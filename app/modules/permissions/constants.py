@@ -124,7 +124,16 @@ SYSTEM_PERMISSIONS: dict[str, list[str]] = {
     PermissionResource.TRANSLATION: ["view", "create", "update", "delete", "import"],
     PermissionResource.SETTING: ["view", "update"],
     PermissionResource.REPORT: ["view", "export"],
-    PermissionResource.NOTIFICATION: ["view", "send"],
+    PermissionResource.NOTIFICATION: [
+        "view",
+        "create",
+        "update",
+        "delete",
+        # Predates the notifications module and still marks an account as
+        # able to reach other people; kept so existing grants of it keep
+        # meaning something.
+        "send",
+    ],
     # No create, update or delete: the platform writes these entries and
     # nothing may edit or remove one, so the codes that would allow it are
     # never defined. A permission that does not exist cannot be granted by
@@ -191,7 +200,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str] | str] = {
         *_codes_for("translation", "view", "create", "update", "delete", "import"),
         *_codes_for("setting", "view", "update"),
         *_codes_for("report", "view", "export"),
-        *_codes_for("notification", "view", "send"),
+        *_codes_for("notification", "view", "create", "update", "delete", "send"),
         *_codes_for("activity_log", "view", "export"),
     ],
     "content-manager": [
