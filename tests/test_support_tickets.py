@@ -9,7 +9,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import PaginationParams
@@ -26,9 +26,9 @@ from app.modules.categories.models.category_type import CategoryType
 from app.modules.permissions.models.permission import Permission
 from app.modules.permissions.models.role_permission import role_permissions
 from app.modules.roles.models.role import Role
-from app.modules.settings.models.setting import Setting
 from app.modules.support import policy
 from app.modules.support.constants import (
+    DEFAULT_REOPEN_WINDOW_DAYS,
     SUPPORT_TICKET_CATEGORY_TYPE_SLUG,
     SupportSettingKey,
     TicketPriority,
@@ -91,32 +91,51 @@ class Desk:
         self.category = category
 
 
+async def _ensure_permissions(
+    session: AsyncSession, codes: list[str]
+) -> list[Permission]:
+    """Return the named permission rows, creating any that are absent.
+
+    The support migration seeds these, but a dozen other modules in this
+    suite truncate `permissions` in their own fixtures - so by the time this
+    runs under the full suite the rows may be gone. Creating them here makes
+    the module independent of test ordering rather than dependent on which
+    file happened to run first.
+    """
+    for code in codes:
+        await session.execute(
+            text(
+                "INSERT INTO permissions (code, resource, action, name, is_system) "
+                "VALUES (:code, 'ticket', :action, :name, true) "
+                "ON CONFLICT (code) DO NOTHING"
+            ),
+            {"code": code, "action": code.split(".", 1)[1], "name": code},
+        )
+    await session.flush()
+
+    found = (
+        (await session.execute(select(Permission).where(Permission.code.in_(codes))))
+        .scalars()
+        .all()
+    )
+    assert len(found) == len(
+        codes
+    ), f"could not provide permissions: {set(codes) - {p.code for p in found}}"
+    return list(found)
+
+
 async def _role_with(session: AsyncSession, slug: str, codes: list[str]) -> Role:
-    """A role holding exactly `codes`, reusing the seeded permission rows."""
+    """A role holding exactly `codes`."""
     role = Role(name=f"Probe {slug}", slug=slug, level=10, is_system=False)
     session.add(role)
     await session.flush()
 
-    if codes:
-        permissions = (
-            (
-                await session.execute(
-                    select(Permission).where(Permission.code.in_(codes))
-                )
+    for permission in await _ensure_permissions(session, codes):
+        await session.execute(
+            role_permissions.insert().values(
+                role_id=role.id, permission_id=permission.id
             )
-            .scalars()
-            .all()
         )
-        assert len(permissions) == len(codes), (
-            f"missing seeded permissions for {slug}: "
-            f"{set(codes) - {p.code for p in permissions}}"
-        )
-        for permission in permissions:
-            await session.execute(
-                role_permissions.insert().values(
-                    role_id=role.id, permission_id=permission.id
-                )
-            )
 
     return role
 
@@ -225,14 +244,7 @@ async def desk(session: AsyncSession) -> AsyncIterator[Desk]:
         key: await _load_user(session, user_id) for key, user_id in identifiers.items()
     }
 
-    category = (
-        await session.execute(
-            select(Category)
-            .join(CategoryType, Category.category_type_id == CategoryType.id)
-            .where(CategoryType.slug == SUPPORT_TICKET_CATEGORY_TYPE_SLUG)
-            .limit(1)
-        )
-    ).scalar_one()
+    category = await _ensure_support_category(session)
 
     yield Desk(
         SupportTicketService(session),
@@ -244,6 +256,51 @@ async def desk(session: AsyncSession) -> AsyncIterator[Desk]:
     )
 
     await _clear(session)
+
+
+async def _ensure_support_category(session: AsyncSession) -> Category:
+    """A live category in the support taxonomy, created if it is missing.
+
+    The migration seeds this taxonomy, but `test_categories` truncates
+    `categories` and `category_types` in its own fixture - so under the full
+    suite the seeded rows may be gone. Providing them here keeps this module
+    independent of which file ran first.
+    """
+    await session.execute(
+        text(
+            "INSERT INTO category_types (name, slug, description, status) "
+            "VALUES (:name, :slug, :description, 'active') "
+            "ON CONFLICT (slug) DO NOTHING"
+        ),
+        {
+            "name": "Support Ticket",
+            "slug": SUPPORT_TICKET_CATEGORY_TYPE_SLUG,
+            "description": "Topics a support ticket can be filed under.",
+        },
+    )
+    await session.execute(
+        text(
+            "INSERT INTO categories (name, slug, category_type_id, status) "
+            "SELECT :name, :slug, id, 'active' FROM category_types "
+            "WHERE slug = :type_slug "
+            "ON CONFLICT (slug) DO NOTHING"
+        ),
+        {
+            "name": "Technical Issue",
+            "slug": "technical-issue",
+            "type_slug": SUPPORT_TICKET_CATEGORY_TYPE_SLUG,
+        },
+    )
+    await session.commit()
+
+    return (
+        await session.execute(
+            select(Category)
+            .join(CategoryType, Category.category_type_id == CategoryType.id)
+            .where(CategoryType.slug == SUPPORT_TICKET_CATEGORY_TYPE_SLUG)
+            .limit(1)
+        )
+    ).scalar_one()
 
 
 async def _load_user(session: AsyncSession, user_id: uuid.UUID) -> User:
@@ -744,20 +801,32 @@ async def test_reopening_clears_the_finished_timestamps(desk: Desk) -> None:
     assert ticket.resolved_at is None
 
 
+async def _set_reopen_window(session: AsyncSession, days: str) -> None:
+    """Write the reopen window, creating the settings row if it is absent.
+
+    `test_settings` truncates `settings`, so the row the support migration
+    seeds is not guaranteed to be there under the full suite.
+    """
+    await session.execute(
+        text(
+            'INSERT INTO settings (key, value, value_type, "group", label, '
+            "description, is_secret, is_system) "
+            "VALUES (:key, :value, 'integer', 'general', "
+            "'Ticket reopen window (days)', "
+            "'How long after closing a student may reopen a ticket.', "
+            "false, true) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+        ),
+        {"key": SupportSettingKey.REOPEN_WINDOW_DAYS.value, "value": days},
+    )
+    await session.commit()
+
+
 async def test_the_reopen_window_is_enforced_from_settings(
     desk: Desk, session: AsyncSession
 ) -> None:
     """A window of zero days means a closed ticket stays closed."""
-    setting = (
-        await session.execute(
-            select(Setting).where(
-                Setting.key == SupportSettingKey.REOPEN_WINDOW_DAYS.value
-            )
-        )
-    ).scalar_one()
-    original = setting.value
-    setting.value = "0"
-    await session.commit()
+    await _set_reopen_window(session, "0")
 
     try:
         ticket = await desk.service.create(payload(), actor=desk.student)
@@ -768,8 +837,25 @@ async def test_the_reopen_window_is_enforced_from_settings(
         with pytest.raises(BadRequestException):
             await service.reopen(ticket.id, actor=desk.student)
     finally:
-        setting.value = original
-        await session.commit()
+        await _set_reopen_window(session, str(DEFAULT_REOPEN_WINDOW_DAYS))
+
+
+async def test_a_negative_reopen_window_removes_the_limit(
+    desk: Desk, session: AsyncSession
+) -> None:
+    """The escape hatch for a desk that does not want the rule at all."""
+    await _set_reopen_window(session, "-1")
+
+    try:
+        ticket = await desk.service.create(payload(), actor=desk.student)
+        await desk.service.close(ticket.id, actor=desk.student)
+
+        reopened = await SupportTicketService(session).reopen(
+            ticket.id, actor=desk.student
+        )
+        assert reopened.status == TicketStatus.REOPENED
+    finally:
+        await _set_reopen_window(session, str(DEFAULT_REOPEN_WINDOW_DAYS))
 
 
 # -- Feedback -------------------------------------------------------------
