@@ -87,6 +87,13 @@ class ActivityAction(StrEnum):
     IMPORT = "import"
     EXPORT = "export"
 
+    # -- Access ------------------------------------------------------------
+    #: Reading a record, not changing it. Recorded only where knowing who
+    #: looked is itself worth auditing - a member of the public's contact
+    #: details, for instance. Logging every read of everything would bury
+    #: the entries that matter.
+    VIEW = "view"
+
     # -- Learning ----------------------------------------------------------
     ENROLL = "enroll"
     UNENROLL = "unenroll"
@@ -132,6 +139,7 @@ class ActivityModule(StrEnum):
     CMS = "cms"
     LMS = "lms"
     SUPPORT = "support"
+    INQUIRIES = "inquiries"
     MEDIA = "media"
     NOTIFICATIONS = "notifications"
     REPORTS = "reports"

@@ -54,6 +54,7 @@ APPLICATION_TABLES = [
     "support_ticket_status_history",
     "support_ticket_activities",
     "support_ticket_feedback",
+    "contact_inquiries",
     "activity_logs",
 ]
 

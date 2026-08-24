@@ -12,6 +12,8 @@ from app.modules.categories.routers import category_type_router
 from app.modules.categories.routers import router as categories_router
 from app.modules.consultancies.routers import router as consultancies_router
 from app.modules.courses.routers import router as courses_router
+from app.modules.inquiries.routers import admin_router as inquiries_admin_router
+from app.modules.inquiries.routers import router as inquiries_router
 from app.modules.master_cruds.routers import master_crud_field_router
 from app.modules.master_cruds.routers import router as master_cruds_router
 from app.modules.menus.routers import router as menus_router
@@ -59,5 +61,9 @@ api_router.include_router(newsletter_router)
 api_router.include_router(support_admin_router)
 api_router.include_router(support_trainer_router)
 api_router.include_router(support_router)
+api_router.include_router(inquiries_admin_router)
+# Public contact form. Separate from the guarded admin router above
+# precisely so nothing there is an exception.
+api_router.include_router(inquiries_router)
 api_router.include_router(translations_router)
 api_router.include_router(activity_logs_router)

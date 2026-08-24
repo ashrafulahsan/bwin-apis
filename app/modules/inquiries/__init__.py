@@ -1,0 +1,1 @@
+"""Website contact inquiry module."""
