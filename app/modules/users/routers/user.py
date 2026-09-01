@@ -1,7 +1,6 @@
 """User CRUD endpoints.
 
-Permission enforcement arrives with the authentication module; the codes in
-`permissions.py` are already reserved for it.
+Restricted to Super Admin and Admin - see [permissions.py](../permissions.py).
 """
 
 import uuid
@@ -11,6 +10,7 @@ from fastapi import APIRouter, Path, Query, status
 
 from app.core.dependencies import DbSession, PaginationDep, SearchDep, SortDep
 from app.modules.users.constants import AuthProvider, UserStatus
+from app.modules.users.permissions import user_admin
 from app.modules.users.schemas.user import (
     PasswordSet,
     SocialLogin,
@@ -30,7 +30,7 @@ from app.shared.schemas.response import (
     success_response,
 )
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(prefix="/users", tags=["Users"], dependencies=[user_admin()])
 
 UserId = Annotated[uuid.UUID, Path(description="User identifier.")]
 
