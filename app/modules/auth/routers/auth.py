@@ -21,7 +21,13 @@ from app.modules.auth.schemas.auth import (
 )
 from app.modules.auth.services.auth import AuthService
 from app.modules.auth.services.password_reset import PasswordResetService
-from app.modules.users.schemas.user import SocialLogin, UserRead
+from app.modules.users.schemas.user import (
+    MyProfileUpdate,
+    SocialLogin,
+    UserRead,
+    UserUpdate,
+)
+from app.modules.users.services.user import UserService
 from app.shared.schemas.response import APIResponse, success_response
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -224,6 +230,31 @@ async def change_password(
 async def read_me(user: CurrentUser) -> APIResponse[UserRead]:
     return success_response(
         data=UserRead.model_validate(user), message="Profile fetched"
+    )
+
+
+@router.patch(
+    "/me",
+    response_model=APIResponse[UserRead],
+    summary="Update your own basic information",
+    description=(
+        "Partial update - send only the fields to change. Available to every "
+        "signed-in user regardless of role: there is no `status`, roles, or "
+        "anything else admin-only here, only account basics (name, email, "
+        "phone, avatar, bio, language). Email and phone still go through the "
+        'same uniqueness and "keep at least one identifier" checks as an '
+        "admin edit."
+    ),
+)
+async def update_me(
+    db: DbSession, user: CurrentUser, payload: MyProfileUpdate
+) -> APIResponse[UserRead]:
+    updated = await UserService(db).update(
+        user.id, UserUpdate(**payload.model_dump(exclude_unset=True))
+    )
+
+    return success_response(
+        data=UserRead.model_validate(updated), message="Profile updated"
     )
 
 

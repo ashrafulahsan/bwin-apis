@@ -129,6 +129,36 @@ class UserUpdate(BaseModel):
         return _validate_phone(value)
 
 
+class MyProfileUpdate(BaseModel):
+    """Partial self-update for `PATCH /auth/me`.
+
+    Deliberately its own schema rather than reusing `UserUpdate`: this is the
+    one every signed-in user can call on themselves regardless of role, so
+    `status` and anything else admin-only must never end up here just because
+    a field got added to `UserUpdate` later.
+    """
+
+    first_name: str | None = Field(
+        default=None, min_length=1, max_length=NAME_MAX_LENGTH
+    )
+    last_name: str | None = Field(default=None, max_length=NAME_MAX_LENGTH)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=PHONE_MAX_LENGTH)
+    avatar_url: str | None = None
+    bio: str | None = None
+    language: Language | None = None
+
+    @field_validator("email")
+    @classmethod
+    def check_email(cls, value: str | None) -> str | None:
+        return _validate_email(value)
+
+    @field_validator("phone")
+    @classmethod
+    def check_phone(cls, value: str | None) -> str | None:
+        return _validate_phone(value)
+
+
 class PasswordSet(BaseModel):
     """Set or replace a password.
 
