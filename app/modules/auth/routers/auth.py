@@ -27,7 +27,13 @@ from app.modules.users.schemas.user import (
     UserRead,
     UserUpdate,
 )
+from app.modules.users.schemas.user_details import (
+    MyDetailsUpdate,
+    UserDetailsRead,
+    UserDetailsUpdate,
+)
 from app.modules.users.services.user import UserService
+from app.modules.users.services.user_details import UserDetailsService
 from app.shared.schemas.response import APIResponse, success_response
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -255,6 +261,53 @@ async def update_me(
 
     return success_response(
         data=UserRead.model_validate(updated), message="Profile updated"
+    )
+
+
+@router.get(
+    "/my-details",
+    response_model=APIResponse[UserDetailsRead | None],
+    summary="Get your own extended profile details",
+    description=(
+        "The fields beyond the basics on `/auth/me` - address, education, "
+        "social links, emergency contact, and so on - keyed off `user_id` to "
+        "the `user_details` table. Returns `data: null` rather than a 404 "
+        "when nothing has been filled in yet; that is the normal state for "
+        "a new account, not an error."
+    ),
+)
+async def read_my_details(
+    db: DbSession, user: CurrentUser
+) -> APIResponse[UserDetailsRead | None]:
+    details = await UserDetailsService(db).get_optional(user.id)
+
+    return success_response(
+        data=UserDetailsRead.model_validate(details) if details else None,
+        message="Details fetched" if details else "No details recorded yet",
+    )
+
+
+@router.patch(
+    "/my-details",
+    response_model=APIResponse[UserDetailsRead],
+    summary="Update your own extended profile details",
+    description=(
+        "Partial update, create-on-first-use - there is no separate step to "
+        "create the row before you can edit it. Available to every "
+        "signed-in user regardless of role. `reporting_to` and `notes` are "
+        "not here: both are set by an administrator, via `PATCH "
+        "/users/{user_id}/details`, not by the person they describe."
+    ),
+)
+async def update_my_details(
+    db: DbSession, user: CurrentUser, payload: MyDetailsUpdate
+) -> APIResponse[UserDetailsRead]:
+    updated = await UserDetailsService(db).upsert(
+        user.id, UserDetailsUpdate(**payload.model_dump(exclude_unset=True))
+    )
+
+    return success_response(
+        data=UserDetailsRead.model_validate(updated), message="Details updated"
     )
 
 

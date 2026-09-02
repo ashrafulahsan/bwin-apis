@@ -35,6 +35,12 @@ class UserDetailsService:
             raise NotFoundException("User details")
         return details
 
+    async def get_optional(self, user_id: uuid.UUID) -> UserDetails | None:
+        """`None` rather than a 404 - for the self-service endpoint, where
+        having nothing filled in yet is the normal state for a new account,
+        not an error."""
+        return await self.repository.get_by_user_id(user_id)
+
     async def create(
         self, user_id: uuid.UUID, payload: UserDetailsCreate
     ) -> UserDetails:
@@ -75,6 +81,16 @@ class UserDetailsService:
             )
         await self.session.commit()
         return updated
+
+    async def upsert(
+        self, user_id: uuid.UUID, payload: UserDetailsUpdate
+    ) -> UserDetails:
+        """Create-or-update - the self-service endpoint's caller should not
+        have to know whether they have filled this in before."""
+        if await self.repository.get_by_user_id(user_id) is None:
+            create_payload = UserDetailsCreate(**payload.model_dump(exclude_unset=True))
+            return await self.create(user_id, create_payload)
+        return await self.update(user_id, payload)
 
     async def delete(self, user_id: uuid.UUID) -> None:
         details = await self.get(user_id)

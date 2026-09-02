@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Path, status
 
 from app.core.dependencies import DbSession
+from app.modules.users.permissions import user_admin
 from app.modules.users.schemas.user_details import (
     UserDetailsCreate,
     UserDetailsRead,
@@ -19,7 +20,10 @@ from app.shared.schemas.response import (
     success_response,
 )
 
-router = APIRouter(prefix="/users", tags=["User Details"])
+# Managing *someone else's* details is an administrative act, same as the
+# sibling /users router - self-service access is the separate
+# /auth/my-details pair, which never takes a user_id from the caller.
+router = APIRouter(prefix="/users", tags=["User Details"], dependencies=[user_admin()])
 
 UserId = Annotated[uuid.UUID, Path(description="User identifier.")]
 

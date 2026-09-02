@@ -46,3 +46,34 @@ class UserDetailsRead(UserDetailsFields):
     user_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+
+class MyDetailsUpdate(BaseModel):
+    """Partial self-update for `PATCH /auth/my-details`.
+
+    Deliberately its own schema rather than reusing `UserDetailsUpdate`:
+    `reporting_to` (who manages this person - an org-chart fact, not a
+    self-declared one) and `notes` (staff-only annotations about the person)
+    both stay admin-only, via `PATCH /users/{user_id}/details`.
+    """
+
+    gender: str | None = Field(default=None, max_length=50)
+    date_of_birth: date | None = None
+    nationality: str | None = Field(default=None, max_length=100)
+    address: str | None = None
+    city: str | None = Field(default=None, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
+    emergency_contact_name: str | None = Field(default=None, max_length=255)
+    emergency_contact_phone: str | None = Field(default=None, max_length=50)
+    photo_id: uuid.UUID | None = None
+    designation: str | None = Field(default=None, max_length=255)
+    department: str | None = Field(default=None, max_length=255)
+    organization: str | None = Field(default=None, max_length=255)
+    years_of_experience: int | None = Field(default=None, ge=0)
+    highest_degree: str | None = Field(default=None, max_length=255)
+    university: str | None = Field(default=None, max_length=255)
+    graduation_year: int | None = Field(default=None, ge=1)
+    linkedin_url: str | None = Field(default=None, max_length=500)
+    youtube_url: str | None = Field(default=None, max_length=500)
+    facebook_url: str | None = Field(default=None, max_length=500)
+    website_url: str | None = Field(default=None, max_length=500)
