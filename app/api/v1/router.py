@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import health
+from app.modules.activity_logs.routers import my_router as my_activity_logs_router
 from app.modules.activity_logs.routers import router as activity_logs_router
 from app.modules.auth.routers import oauth_router
 from app.modules.auth.routers import router as auth_router
@@ -78,3 +79,4 @@ api_router.include_router(inquiries_admin_router)
 api_router.include_router(inquiries_router)
 api_router.include_router(translations_router)
 api_router.include_router(activity_logs_router)
+api_router.include_router(my_activity_logs_router)
