@@ -47,16 +47,7 @@ class S3StorageBackend(StorageBackend):
             kwargs["aws_secret_access_key"] = self._secret_key
         return boto3.client("s3", **kwargs)
 
-    async def save(
-        self,
-        data: bytes,
-        *,
-        key: str,
-        content_type: str | None,
-        base_url: str | None = None,
-    ) -> str:
-        # base_url is irrelevant here - S3 always serves from its own
-        # bucket/CDN domain, never the application's own origin.
+    async def save(self, data: bytes, *, key: str, content_type: str | None) -> str:
         await asyncio.to_thread(
             self._client.put_object,
             Bucket=self.bucket,
@@ -69,7 +60,7 @@ class S3StorageBackend(StorageBackend):
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(self._client.delete_object, Bucket=self.bucket, Key=key)
 
-    def key_from_url(self, url: str, *, base_url: str | None = None) -> str | None:
+    def key_from_url(self, url: str) -> str | None:
         prefix = f"{self.base_url}/"
         if not url.startswith(prefix):
             return None

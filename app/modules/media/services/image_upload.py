@@ -30,25 +30,19 @@ class ImageUploadService:
     def __init__(self, backend: StorageBackend) -> None:
         self.backend = backend
 
-    async def upload(
-        self, upload: UploadFile, *, subdirectory: str, base_url: str | None = None
-    ) -> str:
+    async def upload(self, upload: UploadFile, *, subdirectory: str) -> str:
         """Validate `upload` and store it under `subdirectory`, returning its URL.
 
         The stored name is always a fresh UUID, never the client-supplied
         filename - collision-free, and it discards anything a crafted
-        filename might otherwise smuggle into the storage key. `base_url` is
-        only meaningful to a local-disk backend (see `StorageBackend.save`);
-        an S3 backend ignores it.
+        filename might otherwise smuggle into the storage key.
         """
         extension = self._validate_extension(upload.filename)
         data = await self._read_within_limit(upload, settings.max_upload_size_bytes)
         key = f"{subdirectory}/{uuid.uuid4().hex}{extension}"
-        return await self.backend.save(
-            data, key=key, content_type=upload.content_type, base_url=base_url
-        )
+        return await self.backend.save(data, key=key, content_type=upload.content_type)
 
-    async def delete(self, url: str | None, *, base_url: str | None = None) -> None:
+    async def delete(self, url: str | None) -> None:
         """Best-effort removal of a previously uploaded image, by its URL.
 
         Silently does nothing for `None`, or a URL this backend did not
@@ -58,7 +52,7 @@ class ImageUploadService:
         """
         if not url:
             return
-        key = self.backend.key_from_url(url, base_url=base_url)
+        key = self.backend.key_from_url(url)
         if key is None:
             return
         await self.backend.delete(key)

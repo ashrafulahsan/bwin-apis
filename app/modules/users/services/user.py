@@ -24,8 +24,6 @@ from app.modules.media.services import ImageUploadService
 from app.modules.media.storage.base import StorageBackend
 from app.modules.roles.constants import SystemRole
 from app.modules.roles.repositories.role import RoleRepository
-from app.modules.settings.constants import SettingKey
-from app.modules.settings.services.setting import SettingService
 from app.modules.users.constants import SOCIAL_PROVIDERS, UserStatus
 from app.modules.users.models.user import User
 from app.modules.users.models.user_identity import UserIdentity
@@ -48,11 +46,6 @@ from app.shared.utils.dates import utc_now
 
 logger = logging.getLogger(__name__)
 
-#: Only used if the `app_base_url` setting row is somehow missing (it ships
-#: seeded - see app/modules/settings/constants.py:SYSTEM_SETTINGS) - avatar
-#: uploads should still work on a fresh, unseeded database rather than fail.
-DEFAULT_APP_BASE_URL = "http://127.0.0.1:8000"
-
 
 class UserService:
     """Coordinates user reads, writes, role assignment and social linking."""
@@ -62,7 +55,6 @@ class UserService:
         self.repository = UserRepository(session)
         self.activity = ActivityLogService(session, ActivityModule.USERS)
         self.roles = RoleRepository(session)
-        self.settings = SettingService(session)
 
     # -- Reads ----------------------------------------------------------
 
@@ -204,11 +196,8 @@ class UserService:
         """
         user = await self.repository.get_or_raise(user_id)
         uploader = ImageUploadService(storage)
-        base_url = await self._app_base_url()
 
-        new_url = await uploader.upload(
-            upload, subdirectory=AVATAR_SUBDIRECTORY, base_url=base_url
-        )
+        new_url = await uploader.upload(upload, subdirectory=AVATAR_SUBDIRECTORY)
         old_url = user.avatar_url
 
         updated = await self.repository.update(user, avatar_url=new_url)
@@ -223,7 +212,7 @@ class UserService:
         await self.session.commit()
 
         if old_url:
-            await uploader.delete(old_url, base_url=base_url)
+            await uploader.delete(old_url)
 
         return updated
 
@@ -244,23 +233,9 @@ class UserService:
         )
         await self.session.commit()
 
-        await ImageUploadService(storage).delete(
-            old_url, base_url=await self._app_base_url()
-        )
+        await ImageUploadService(storage).delete(old_url)
 
         return updated
-
-    async def _app_base_url(self) -> str:
-        """This application's own public origin - see `SettingKey.APP_BASE_URL`.
-
-        The single source of truth for "what is this API's address", already
-        relied on to build OAuth callback URLs - avatar URLs read the same
-        row rather than a second, independently-configured value that could
-        drift from it.
-        """
-        return await self.settings.value(
-            SettingKey.APP_BASE_URL.value, default=DEFAULT_APP_BASE_URL
-        )
 
     async def set_password(self, user_id: uuid.UUID, payload: PasswordSet) -> User:
         """Set or replace a password.
