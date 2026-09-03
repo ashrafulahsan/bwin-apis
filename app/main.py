@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -12,6 +13,7 @@ from app.core.context import RequestContextMiddleware
 from app.core.database import dispose_engine
 from app.core.exceptions import register_exception_handlers
 from app.core.i18n import LanguageMiddleware
+from app.modules.media.constants import MEDIA_MOUNT_PATH
 from app.shared.schemas.response import APIResponse, success_response
 
 
@@ -29,6 +31,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_application() -> FastAPI:
     """Application factory, keeps startup testable and import-order safe."""
+    # `StaticFiles` checks the directory exists at mount time, which happens
+    # below - before the lifespan's own startup event fires - so it has to be
+    # created here rather than waiting on `lifespan`.
+    settings.ensure_storage_dirs()
+
     application = FastAPI(
         title=settings.project_name,
         description=settings.description,
@@ -58,6 +65,13 @@ def create_application() -> FastAPI:
     register_exception_handlers(application)
 
     application.include_router(api_router, prefix=settings.api_v1_prefix)
+
+    # Serves whatever the local storage backend has written - see
+    # app/modules/media. Irrelevant when STORAGE_BACKEND=s3 (nothing is ever
+    # written under upload_dir in that mode), but harmless to keep mounted.
+    application.mount(
+        MEDIA_MOUNT_PATH, StaticFiles(directory=settings.upload_dir), name="media"
+    )
 
     return application
 

@@ -31,6 +31,19 @@ ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
 ALLOWED_VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov"})
 
 
+class StorageBackend(StrEnum):
+    """Where uploaded files physically land.
+
+    Both write to the same relative `key` layout, so switching this in
+    `.env` is the entire migration - nothing about a `key` (e.g.
+    `avatars/<uuid>.png`) changes between them, only how it resolves to a
+    URL.
+    """
+
+    LOCAL = "local"
+    S3 = "s3"
+
+
 class Language(StrEnum):
     """Languages the platform serves content in."""
 

@@ -6,9 +6,10 @@ Restricted to Super Admin and Admin - see [permissions.py](../permissions.py).
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Path, Query, UploadFile, status
 
 from app.core.dependencies import DbSession, PaginationDep, SearchDep, SortDep
+from app.modules.media.dependencies import StorageDep
 from app.modules.users.constants import AuthProvider, UserStatus
 from app.modules.users.permissions import user_admin
 from app.modules.users.schemas.user import (
@@ -127,6 +128,41 @@ async def update_user(
     user = await UserService(db).update(user_id, payload)
 
     return success_response(data=UserRead.model_validate(user), message="User updated")
+
+
+@router.post(
+    "/{user_id}/avatar",
+    response_model=APIResponse[UserRead],
+    summary="Upload a profile picture",
+    description=(
+        "Stores the image through the configured storage backend (local "
+        "disk or S3 - see `STORAGE_BACKEND`) and points `avatar_url` at it. "
+        "Replaces and removes any previous avatar."
+    ),
+)
+async def upload_avatar(
+    db: DbSession, user_id: UserId, storage: StorageDep, file: UploadFile
+) -> APIResponse[UserRead]:
+    user = await UserService(db).set_avatar(user_id, file, storage)
+
+    return success_response(
+        data=UserRead.model_validate(user), message="Avatar updated"
+    )
+
+
+@router.delete(
+    "/{user_id}/avatar",
+    response_model=APIResponse[UserRead],
+    summary="Remove a profile picture",
+)
+async def remove_avatar(
+    db: DbSession, user_id: UserId, storage: StorageDep
+) -> APIResponse[UserRead]:
+    user = await UserService(db).clear_avatar(user_id, storage)
+
+    return success_response(
+        data=UserRead.model_validate(user), message="Avatar removed"
+    )
 
 
 @router.delete(

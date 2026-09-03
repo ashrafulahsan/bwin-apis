@@ -21,3 +21,4 @@ httpx>=0.28.0            # OAuth token exchange and provider profile calls
 
 # Uploads
 python-multipart>=0.0.20  # multipart parsing for support ticket attachments
+boto3>=1.34.0              # S3 storage backend (app/modules/media) - unused when STORAGE_BACKEND=local

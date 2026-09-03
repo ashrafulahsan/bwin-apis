@@ -12,6 +12,7 @@ from app.core.constants import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
     Environment,
+    StorageBackend,
 )
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -92,6 +93,27 @@ class Settings(BaseSettings):
     export_dir: Path = BASE_DIR / "app" / "storage" / "exports"
     max_upload_size_mb: int = 10
 
+    #: Which backend `app.modules.media` writes uploaded images to. `local`
+    #: works out of the box; flip to `s3` and fill in the block below to move
+    #: uploads onto S3 without changing any calling code - both backends are
+    #: handed the same `key` and return a URL.
+    #:
+    #: The local backend's public base URL is deliberately not a setting
+    #: here - it reads the `app_base_url` system setting instead (see
+    #: `UserService._app_base_url`), the same one OAuth callbacks already use,
+    #: rather than a second value that could drift out of sync with it.
+    storage_backend: StorageBackend = StorageBackend.LOCAL
+
+    #: S3 configuration - only required when `storage_backend=s3`.
+    aws_access_key_id: SecretStr | None = None
+    aws_secret_access_key: SecretStr | None = None
+    aws_region: str = "us-east-1"
+    aws_s3_bucket: str | None = None
+    #: Optional CDN/custom domain to serve the bucket from (e.g. a
+    #: CloudFront distribution). Falls back to the bucket's own virtual-hosted
+    #: URL when unset.
+    aws_s3_public_url: str | None = None
+
     # -- Logging --------------------------------------------------------
     log_level: str = "INFO"
 
@@ -139,6 +161,10 @@ class Settings(BaseSettings):
         return self.max_upload_size_mb * BYTES_PER_MB
 
     @property
+    def is_s3_storage(self) -> bool:
+        return self.storage_backend is StorageBackend.S3
+
+    @property
     def docs_url(self) -> str | None:
         """Swagger UI is disabled in production."""
         return None if self.is_production else "/docs"
@@ -171,6 +197,22 @@ class Settings(BaseSettings):
             )
         if self.debug:
             raise ValueError("DEBUG must be disabled in production.")
+
+        return self
+
+    @model_validator(mode="after")
+    def _require_s3_config_when_selected(self) -> "Settings":
+        """Fail at boot, not on the first upload, if S3 is picked but unconfigured.
+
+        Credentials are deliberately not required here: leaving
+        `aws_access_key_id`/`aws_secret_access_key` unset is the normal case
+        for a deployment that authenticates via an instance role or the
+        environment instead - boto3's default credential chain handles that,
+        see `app/modules/media/storage/s3.py`. The bucket has no such
+        fallback, so it is the one thing this enforces.
+        """
+        if self.storage_backend is StorageBackend.S3 and not self.aws_s3_bucket:
+            raise ValueError("AWS_S3_BUCKET must be set when STORAGE_BACKEND=s3.")
 
         return self
 
