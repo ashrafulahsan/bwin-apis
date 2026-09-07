@@ -11,7 +11,7 @@ from fastapi import APIRouter, Path, Query, UploadFile, status
 from app.core.dependencies import DbSession, PaginationDep, SearchDep, SortDep
 from app.modules.media.dependencies import StorageDep
 from app.modules.users.constants import AuthProvider, UserStatus
-from app.modules.users.permissions import user_admin
+from app.modules.users.permissions import self_or_admin, user_admin
 from app.modules.users.schemas.user import (
     PasswordSet,
     SocialLogin,
@@ -31,7 +31,7 @@ from app.shared.schemas.response import (
     success_response,
 )
 
-router = APIRouter(prefix="/users", tags=["Users"], dependencies=[user_admin()])
+router = APIRouter(prefix="/users", tags=["Users"])
 
 UserId = Annotated[uuid.UUID, Path(description="User identifier.")]
 
@@ -41,6 +41,7 @@ UserId = Annotated[uuid.UUID, Path(description="User identifier.")]
     response_model=APIResponse[Page[UserRead]],
     summary="List users",
     description="Search matches email, phone, first name and last name.",
+    dependencies=[user_admin()],
 )
 async def list_users(
     db: DbSession,
@@ -79,6 +80,7 @@ async def list_users(
         "Accepts either credential and works out which it is, so a client "
         "does not have to. Phone numbers are matched in any format."
     ),
+    dependencies=[user_admin()],
 )
 async def get_user_by_identifier(
     db: DbSession,
@@ -95,7 +97,12 @@ async def get_user_by_identifier(
     return success_response(data=UserRead.model_validate(user), message="User fetched")
 
 
-@router.get("/{user_id}", response_model=APIResponse[UserRead], summary="Get a user")
+@router.get(
+    "/{user_id}",
+    response_model=APIResponse[UserRead],
+    summary="Get a user",
+    dependencies=[user_admin()],
+)
 async def get_user(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
     user = await UserService(db).get(user_id)
 
@@ -112,6 +119,7 @@ async def get_user(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
         "optional - omit it for an account that will only use social login. "
         "Without `role_ids` the user becomes a student."
     ),
+    dependencies=[user_admin()],
 )
 async def create_user(db: DbSession, payload: UserCreate) -> APIResponse[UserRead]:
     user = await UserService(db).create(payload)
@@ -120,7 +128,10 @@ async def create_user(db: DbSession, payload: UserCreate) -> APIResponse[UserRea
 
 
 @router.patch(
-    "/{user_id}", response_model=APIResponse[UserRead], summary="Update a user"
+    "/{user_id}",
+    response_model=APIResponse[UserRead],
+    summary="Update a user",
+    dependencies=[user_admin()],
 )
 async def update_user(
     db: DbSession, user_id: UserId, payload: UserUpdate
@@ -137,8 +148,10 @@ async def update_user(
     description=(
         "Stores the image through the configured storage backend (local "
         "disk or S3 - see `STORAGE_BACKEND`) and points `avatar_url` at it. "
-        "Replaces and removes any previous avatar."
+        "Replaces and removes any previous avatar. Available to the account "
+        "holder for their own picture, or to Super Admin/Admin for anyone's."
     ),
+    dependencies=[self_or_admin()],
 )
 async def upload_avatar(
     db: DbSession, user_id: UserId, storage: StorageDep, file: UploadFile
@@ -154,6 +167,11 @@ async def upload_avatar(
     "/{user_id}/avatar",
     response_model=APIResponse[UserRead],
     summary="Remove a profile picture",
+    description=(
+        "Available to the account holder for their own picture, or to Super "
+        "Admin/Admin for anyone's."
+    ),
+    dependencies=[self_or_admin()],
 )
 async def remove_avatar(
     db: DbSession, user_id: UserId, storage: StorageDep
@@ -170,6 +188,7 @@ async def remove_avatar(
     response_model=APIResponse[None],
     summary="Delete a user",
     description="Soft delete.",
+    dependencies=[user_admin()],
 )
 async def delete_user(db: DbSession, user_id: UserId) -> APIResponse[None]:
     await UserService(db).delete(user_id)
@@ -181,6 +200,7 @@ async def delete_user(db: DbSession, user_id: UserId) -> APIResponse[None]:
     "/{user_id}/restore",
     response_model=APIResponse[UserRead],
     summary="Restore a deleted user",
+    dependencies=[user_admin()],
 )
 async def restore_user(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
     user = await UserService(db).restore(user_id)
@@ -197,6 +217,7 @@ async def restore_user(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
         "An account created through social login can set its first password "
         "without it."
     ),
+    dependencies=[user_admin()],
 )
 async def set_password(
     db: DbSession, user_id: UserId, payload: PasswordSet
@@ -213,6 +234,7 @@ async def set_password(
     "/{user_id}/verify-email",
     response_model=APIResponse[UserRead],
     summary="Mark an email address verified",
+    dependencies=[user_admin()],
 )
 async def verify_email(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
     user = await UserService(db).verify_email(user_id)
@@ -226,6 +248,7 @@ async def verify_email(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
     "/{user_id}/verify-phone",
     response_model=APIResponse[UserRead],
     summary="Mark a phone number verified",
+    dependencies=[user_admin()],
 )
 async def verify_phone(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
     user = await UserService(db).verify_phone(user_id)
@@ -242,6 +265,7 @@ async def verify_phone(db: DbSession, user_id: UserId) -> APIResponse[UserRead]:
     "/{user_id}/roles",
     response_model=APIResponse[UserRead],
     summary="Replace a user's roles",
+    dependencies=[user_admin()],
 )
 async def replace_roles(
     db: DbSession, user_id: UserId, payload: UserRoleAssignment
@@ -255,6 +279,7 @@ async def replace_roles(
     "/{user_id}/roles",
     response_model=APIResponse[UserRead],
     summary="Assign roles to a user",
+    dependencies=[user_admin()],
 )
 async def assign_roles(
     db: DbSession, user_id: UserId, payload: UserRoleAssignment
@@ -270,6 +295,7 @@ async def assign_roles(
     "/{user_id}/roles/revoke",
     response_model=APIResponse[UserRead],
     summary="Revoke roles from a user",
+    dependencies=[user_admin()],
 )
 async def revoke_roles(
     db: DbSession, user_id: UserId, payload: UserRoleAssignment
@@ -286,6 +312,7 @@ async def revoke_roles(
     "/{user_id}/identities",
     response_model=APIResponse[list[UserIdentityRead]],
     summary="List linked social accounts",
+    dependencies=[user_admin()],
 )
 async def list_identities(
     db: DbSession, user_id: UserId
@@ -307,6 +334,7 @@ async def list_identities(
         "Attaches a Google or Facebook account. The caller must already have "
         "verified the identity with the provider."
     ),
+    dependencies=[user_admin()],
 )
 async def link_identity(
     db: DbSession, user_id: UserId, payload: SocialLogin
@@ -323,6 +351,7 @@ async def link_identity(
     response_model=APIResponse[None],
     summary="Unlink a social account",
     description="Refused when it is the only way left to sign in.",
+    dependencies=[user_admin()],
 )
 async def unlink_identity(
     db: DbSession,
