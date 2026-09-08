@@ -83,6 +83,7 @@ class MenuService:
         roots_only: bool = False,
         sort_by: str | None = None,
         sort_order: SortOrder = SortOrder.ASC,
+        include_deleted: bool = False,
     ) -> tuple[list[Menu], int]:
         if sort_by is None:
             # A navigation is read in the order an administrator arranged it,
@@ -108,6 +109,7 @@ class MenuService:
             search_fields=list(MENU_SEARCH_FIELDS),
             sort_by=sort_by,
             sort_order=sort_order,
+            include_deleted=include_deleted,
         )
 
     async def children_of(self, menu_id: uuid.UUID) -> list[Menu]:

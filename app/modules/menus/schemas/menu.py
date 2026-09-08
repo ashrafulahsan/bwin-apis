@@ -72,6 +72,7 @@ class MenuRead(BaseModel):
     updated_by: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None
 
 
 class MenuSummary(BaseModel):

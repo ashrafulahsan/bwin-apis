@@ -66,6 +66,9 @@ async def list_menus(
     roots_only: Annotated[
         bool, Query(description="Return only top-level items.")
     ] = False,
+    include_deleted: Annotated[
+        bool, Query(description="Include soft-deleted items, e.g. for a trash view.")
+    ] = False,
 ) -> APIResponse[Page[MenuRead]]:
     items, total = await MenuService(db).list_menus(
         pagination,
@@ -75,6 +78,7 @@ async def list_menus(
         roots_only=roots_only,
         sort_by=sort.sort_by,
         sort_order=sort.sort_order,
+        include_deleted=include_deleted,
     )
 
     return paginated_response(
